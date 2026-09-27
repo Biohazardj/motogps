@@ -7,7 +7,6 @@
 <title>MotoGPS</title>
 
 <style>
-
 body {
   font-family: Arial, sans-serif;
   text-align: center;
@@ -68,14 +67,12 @@ input {
   padding: 15px;
   border-radius: 12px;
 }
-
 </style>
 </head>
 
 <body>
 
 <h1>MotoGPS</h1>
-
 
 <!-- BLUETOOTH -->
 
@@ -87,7 +84,6 @@ CONECTAR MOTOGPS
 Desconectado
 </div>
 
-
 <!-- GPS -->
 
 <button id="gps" onclick="iniciarGPS()">
@@ -98,11 +94,9 @@ ACTIVAR GPS
 GPS desactivado
 </div>
 
-
 <hr>
 
-
-<!-- DESTINO -->
+<!-- NAVEGACIÓN -->
 
 <h2>Navegación</h2>
 
@@ -119,8 +113,7 @@ CALCULAR RUTA
 Sin ruta
 </div>
 
-
-<!-- PRUEBA BLE -->
+<!-- PRUEBAS MANUALES -->
 
 <button class="send" onclick="enviar('T:RIGHT')">
 ENVIAR T:RIGHT
@@ -138,7 +131,6 @@ const SERVICE_UUID =
 
 const CHARACTERISTIC_UUID =
 '87654321-4321-4321-4321-ba0987654321';
-
 
 let characteristic;
 
@@ -159,33 +151,26 @@ async function conectar() {
 
     const device =
     await navigator.bluetooth.requestDevice({
-
       filters: [
         { name: 'MotoGPS' }
       ],
-
       optionalServices: [
         SERVICE_UUID
       ]
-
     });
-
 
     const server =
     await device.gatt.connect();
-
 
     const service =
     await server.getPrimaryService(
       SERVICE_UUID
     );
 
-
     characteristic =
     await service.getCharacteristic(
       CHARACTERISTIC_UUID
     );
-
 
     document.getElementById("status").innerText =
     "✅ MotoGPS conectado";
@@ -202,6 +187,9 @@ async function conectar() {
 }
 
 
+/* =========================
+   ENVIAR BLE
+========================= */
 
 async function enviar(texto) {
 
@@ -211,18 +199,14 @@ async function enviar(texto) {
     "Primero conecta MotoGPS";
 
     return;
-
   }
-
 
   try {
 
     const datos =
     new TextEncoder().encode(texto);
 
-
     await characteristic.writeValue(datos);
-
 
     document.getElementById("status").innerText =
     "Enviado: " + texto;
@@ -239,7 +223,6 @@ async function enviar(texto) {
 }
 
 
-
 /* =========================
    GPS
 ========================= */
@@ -252,34 +235,22 @@ function iniciarGPS() {
     "Este navegador no permite GPS";
 
     return;
-
   }
-
 
   document.getElementById("gpsdata").innerText =
   "Buscando posición...";
 
-
   navigator.geolocation.watchPosition(
-
     actualizarGPS,
-
     errorGPS,
-
     {
-
       enableHighAccuracy: true,
-
       maximumAge: 0,
-
       timeout: 15000
-
     }
-
   );
 
 }
-
 
 
 function actualizarGPS(pos) {
@@ -290,22 +261,18 @@ function actualizarGPS(pos) {
   lonActual =
   pos.coords.longitude;
 
-
   const lat =
   latActual.toFixed(6);
 
   const lon =
   lonActual.toFixed(6);
 
-
   const precision =
   Math.round(
     pos.coords.accuracy
   );
 
-
   let velocidad = 0;
-
 
   if (pos.coords.speed !== null) {
 
@@ -315,7 +282,6 @@ function actualizarGPS(pos) {
     );
 
   }
-
 
   document.getElementById("gpsdata").innerHTML =
 
@@ -330,14 +296,12 @@ function actualizarGPS(pos) {
 }
 
 
-
 function errorGPS(error) {
 
   document.getElementById("gpsdata").innerText =
   "❌ Error GPS: " + error.message;
 
 }
-
 
 
 /* =========================
@@ -354,14 +318,11 @@ async function buscarDestino(texto) {
   "&q=" +
   encodeURIComponent(texto);
 
-
   const respuesta =
   await fetch(url);
 
-
   const datos =
   await respuesta.json();
-
 
   if (datos.length === 0) {
 
@@ -370,7 +331,6 @@ async function buscarDestino(texto) {
     );
 
   }
-
 
   return {
 
@@ -388,7 +348,6 @@ async function buscarDestino(texto) {
 }
 
 
-
 /* =========================
    CALCULAR RUTA
 ========================= */
@@ -398,9 +357,7 @@ async function calcularRuta() {
   const salida =
   document.getElementById("rutadata");
 
-
   try {
-
 
     if (
       latActual === null ||
@@ -411,9 +368,7 @@ async function calcularRuta() {
       "❌ Primero activa el GPS";
 
       return;
-
     }
-
 
     const texto =
     document
@@ -421,24 +376,19 @@ async function calcularRuta() {
     .value
     .trim();
 
-
     if (!texto) {
 
       salida.innerHTML =
       "❌ Escribe un destino";
 
       return;
-
     }
-
 
     salida.innerHTML =
     "🔎 Buscando destino...";
 
-
     const destino =
     await buscarDestino(texto);
-
 
     salida.innerHTML =
     "🗺️ Calculando ruta...";
@@ -460,7 +410,6 @@ async function calcularRuta() {
     const respuesta =
     await fetch(url);
 
-
     const datos =
     await respuesta.json();
 
@@ -480,7 +429,6 @@ async function calcularRuta() {
 
     const ruta =
     datos.routes[0];
-
 
     const pasos =
     ruta.legs[0].steps;
@@ -516,25 +464,19 @@ async function calcularRuta() {
 
 
     pasos.slice(0, 8).forEach(
-
       function(paso, indice) {
-
 
         const tipo =
         paso.maneuver.type;
 
-
         const modificador =
         paso.maneuver.modifier || "";
-
 
         const calle =
         paso.name || "Sin nombre";
 
-
         const distancia =
         Math.round(paso.distance);
-
 
         html +=
 
@@ -559,15 +501,84 @@ async function calcularRuta() {
         "<br><br>";
 
       }
-
     );
+
+
+    /* =========================
+       ENVIAR PRIMERA MANIOBRA
+       AUTOMÁTICAMENTE
+    ========================= */
+
+    if (pasos.length > 0 && characteristic) {
+
+      const maniobra =
+      pasos[0].maneuver;
+
+      const tipo =
+      maniobra.type || "";
+
+      const modificador =
+      maniobra.modifier || "";
+
+      let comando = "";
+
+
+      if (
+        modificador.includes("right")
+      ) {
+
+        comando =
+        "T:RIGHT";
+
+      }
+
+      else if (
+        modificador.includes("left")
+      ) {
+
+        comando =
+        "T:LEFT";
+
+      }
+
+      else if (
+        modificador.includes("straight") ||
+        tipo === "continue"
+      ) {
+
+        comando =
+        "T:STRAIGHT";
+
+      }
+
+      else if (
+        modificador.includes("uturn")
+      ) {
+
+        comando =
+        "T:UTURN";
+
+      }
+
+
+      if (comando !== "") {
+
+        await enviar(comando);
+
+        html +=
+        "<hr>" +
+        "📡 <b>Enviado a MotoGPS:</b> " +
+        comando;
+
+      }
+
+    }
 
 
     salida.innerHTML =
     html;
 
   }
-
 
   catch(error) {
 
