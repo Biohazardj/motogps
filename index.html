@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MotoGPS BLE Test</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #111;
+      color: white;
+      padding: 30px 15px;
+    }
+
+    button {
+      display: block;
+      width: 90%;
+      max-width: 350px;
+      margin: 18px auto;
+      padding: 18px;
+      font-size: 20px;
+      border-radius: 12px;
+      border: none;
+    }
+
+    #connect {
+      background: #2196F3;
+      color: white;
+    }
+
+    .send {
+      background: #4CAF50;
+      color: white;
+    }
+
+    #status {
+      margin: 25px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>MotoGPS</h1>
+
+<p>Prueba Web Bluetooth</p>
+
+<button id="connect" onclick="conectar()">
+  CONECTAR MOTOGPS
+</button>
+
+<div id="status">
+  Desconectado
+</div>
+
+<button class="send" onclick="enviar('T:RIGHT')">
+  ENVIAR T:RIGHT
+</button>
+
+<button class="send" onclick="enviar('T:LEFT')">
+  ENVIAR T:LEFT
+</button>
+
+<script>
+
+const SERVICE_UUID =
+  '12345678-1234-1234-1234-1234567890ab';
+
+const CHARACTERISTIC_UUID =
+  '87654321-4321-4321-4321-ba0987654321';
+
+let characteristic;
+
+async function conectar() {
+
+  try {
+
+    document.getElementById("status").innerText =
+      "Buscando MotoGPS...";
+
+    const device =
+      await navigator.bluetooth.requestDevice({
+        filters: [
+          { name: 'MotoGPS' }
+        ],
+        optionalServices: [
+          SERVICE_UUID
+        ]
+      });
+
+    document.getElementById("status").innerText =
+      "Conectando...";
+
+    const server =
+      await device.gatt.connect();
+
+    const service =
+      await server.getPrimaryService(
+        SERVICE_UUID
+      );
+
+    characteristic =
+      await service.getCharacteristic(
+        CHARACTERISTIC_UUID
+      );
+
+    document.getElementById("status").innerText =
+      "✅ MotoGPS conectado";
+
+  }
+  catch(error) {
+
+    document.getElementById("status").innerText =
+      "❌ " + error;
+
+    console.log(error);
+  }
+}
+
+
+async function enviar(texto) {
+
+  if (!characteristic) {
+
+    document.getElementById("status").innerText =
+      "Primero conecta MotoGPS";
+
+    return;
+  }
+
+  try {
+
+    const datos =
+      new TextEncoder().encode(texto);
+
+    await characteristic.writeValue(datos);
+
+    document.getElementById("status").innerText =
+      "Enviado: " + texto;
+
+  }
+  catch(error) {
+
+    document.getElementById("status").innerText =
+      "❌ " + error;
+
+  }
+}
+
+</script>
+
+</body>
+</html>
