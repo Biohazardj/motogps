@@ -128,6 +128,9 @@ let characteristic;
 let latActual = null;
 let lonActual = null;
 
+/* Última velocidad enviada al ESP32 */
+let ultimaVelocidadEnviada = null;
+
 
 /* =========================
    BLUETOOTH
@@ -231,7 +234,7 @@ function iniciarGPS() {
 }
 
 
-function actualizarGPS(pos) {
+async function actualizarGPS(pos) {
 
   latActual = pos.coords.latitude;
   lonActual = pos.coords.longitude;
@@ -247,11 +250,15 @@ function actualizarGPS(pos) {
 
   let velocidad = 0;
 
-  if (pos.coords.speed !== null) {
+  if (
+    pos.coords.speed !== null &&
+    pos.coords.speed >= 0
+  ) {
 
     velocidad =
     Math.round(pos.coords.speed * 3.6);
   }
+
 
   document.getElementById("gpsdata").innerHTML =
 
@@ -262,6 +269,28 @@ function actualizarGPS(pos) {
   "<br>🎯 Precisión: " + precision + " m" +
 
   "<br>🏍️ Velocidad: " + velocidad + " km/h";
+
+
+  /* =========================
+     ENVIAR VELOCIDAD
+  ========================= */
+
+  if (
+    characteristic &&
+    velocidad !== ultimaVelocidadEnviada
+  ) {
+
+    const enviado =
+    await enviar(
+      "V:" + velocidad
+    );
+
+    if (enviado) {
+
+      ultimaVelocidadEnviada =
+      velocidad;
+    }
+  }
 }
 
 
@@ -491,7 +520,8 @@ async function calcularRuta() {
 
 
     /* =========================
-       ENVIAR AL ESP32
+       ENVIAR MANIOBRA,
+       DISTANCIA Y CALLE
     ========================= */
 
     if (pasos.length > 0 && characteristic) {
@@ -509,14 +539,10 @@ async function calcularRuta() {
       primerPaso.name || "Sin nombre";
 
 
-      /* Flecha */
-
       await enviar(comando);
 
       await esperar(150);
 
-
-      /* Distancia */
 
       await enviar(
         "D:" + distancia + " m"
@@ -524,8 +550,6 @@ async function calcularRuta() {
 
       await esperar(150);
 
-
-      /* Calle */
 
       await enviar(
         "C:" + calle
@@ -568,7 +592,7 @@ async function calcularRuta() {
 
 
 /* =========================
-   PEQUEÑA PAUSA BLE
+   PAUSA BLE
 ========================= */
 
 function esperar(ms) {
