@@ -31,9 +31,7 @@ button {
 #simulate { background:#00a86b; }
 #stop { background:#d32f2f; }
 
-#status,
-#simdata,
-#navdata {
+#status, #simdata, #navdata {
   max-width:400px;
   margin:18px auto;
   line-height:1.6;
@@ -61,9 +59,7 @@ button {
 CONECTAR MOTOGPS
 </button>
 
-<div id="status">
-Desconectado
-</div>
+<div id="status">Desconectado</div>
 
 <hr>
 
@@ -91,6 +87,10 @@ Sin ruta
 
 <script>
 
+/* ==========================
+   BLE
+========================== */
+
 const SERVICE_UUID =
 '12345678-1234-1234-1234-1234567890ab';
 
@@ -99,22 +99,38 @@ const CHARACTERISTIC_UUID =
 
 let characteristic = null;
 
-let pasosRuta = [];
-let puntosSimulacion = [];
 
-let indicePaso = 0;
+/* ==========================
+   RUTA / SIMULACIÓN
+========================== */
+
+let pasosRuta = [];
+let puntosRuta = [];
+
+/*
+ Cada elemento contendrá:
+
+ {
+   paso: paso OSRM,
+   indicePunto: posición dentro
+                de puntosRuta
+ }
+*/
+
+let maniobras = [];
+
+let indiceManiobra = 0;
 let indiceSimulacion = 0;
 
 let simulando = false;
 let timer = null;
 
-let latActual = null;
-let lonActual = null;
+let ultimaManiobraEnviada = -1;
 
 
-/* =========================
-   BLE
-========================= */
+/* ==========================
+   BLUETOOTH
+========================== */
 
 async function conectar() {
 
@@ -145,9 +161,7 @@ async function conectar() {
     document.getElementById("status").innerText =
       "✅ MotoGPS conectado";
 
-  }
-
-  catch(error) {
+  } catch(error) {
 
     document.getElementById("status").innerText =
       "❌ " + error.message;
@@ -155,14 +169,14 @@ async function conectar() {
 }
 
 
-/* =========================
-   BLE SEND
-========================= */
+/* ==========================
+   ENVÍO BLE
+========================== */
 
 async function enviar(texto) {
 
   if (!characteristic)
-    return;
+    return false;
 
   try {
 
@@ -171,12 +185,14 @@ async function enviar(texto) {
 
     await characteristic.writeValue(datos);
 
-  }
+    return true;
 
-  catch(error) {
+  } catch(error) {
 
     document.getElementById("status").innerText =
       "❌ BLE: " + error.message;
+
+    return false;
   }
 }
 
@@ -184,29 +200,22 @@ async function enviar(texto) {
 function esperar(ms) {
 
   return new Promise(resolve =>
-    setTimeout(resolve,ms)
+    setTimeout(resolve, ms)
   );
 }
 
 
-/* =========================
+/* ==========================
    RUTA DE PRUEBA
-========================= */
+========================== */
 
 async function calcularRutaPrueba() {
 
   detenerSimulacion();
 
   document.getElementById("simdata").innerHTML =
-    "🌐 Conectando con OSRM...";
+    "🌐 Descargando ruta OSRM...";
 
-
-  /*
-    Dos coordenadas fijas para
-    nuestra prueba.
-
-    No utilizamos Nominatim.
-  */
 
   const origen = {
     lat:42.5814,
@@ -259,7 +268,7 @@ async function calcularRutaPrueba() {
     ) {
 
       throw new Error(
-        "OSRM no devolvió ruta"
+        "OSRM no devolvió una ruta"
       );
     }
 
@@ -270,11 +279,6 @@ async function calcularRutaPrueba() {
       .steps;
 
 
-    /*
-      Esta geometría representa
-      literalmente la carretera.
-    */
-
     const geometria =
       datos.routes[0]
       .geometry
@@ -282,76 +286,76 @@ async function calcularRutaPrueba() {
 
 
     /*
-      Generamos MUCHOS puntos
-      intermedios.
-
-      Así no dependemos de que
-      OSRM tenga puntos separados
-      muchos metros.
+      Creamos puntos cada ~5 m
+      aproximadamente.
     */
 
-    puntosSimulacion =
+    puntosRuta =
       densificarGeometria(
         geometria,
         5
       );
 
 
-    indicePaso = 0;
+    /*
+      Relacionamos cada maniobra
+      OSRM con el punto más cercano
+      de la geometría.
+    */
+
+    construirIndiceManiobras();
+
+
     indiceSimulacion = 0;
+
+    ultimaManiobraEnviada = -1;
 
 
     /*
-      El primer paso suele ser
-      DEPART. Para navegación nos
-      interesa el siguiente giro.
+      Saltamos DEPART.
     */
 
+    indiceManiobra = 0;
+
     if (
-      pasosRuta.length > 1 &&
-      pasosRuta[0].maneuver.type ===
+      maniobras.length > 1 &&
+      maniobras[0].paso.maneuver.type ===
       "depart"
     ) {
 
-      indicePaso = 1;
+      indiceManiobra = 1;
     }
 
 
-    lonActual =
-      puntosSimulacion[0][0];
-
-    latActual =
-      puntosSimulacion[0][1];
-
-
     document.getElementById("simdata").innerHTML =
 
-      "✅ RUTA CARGADA" +
+      "✅ RUTA PREPARADA" +
 
-      "<br>Maniobras: " +
+      "<br>Pasos OSRM: " +
       pasosRuta.length +
 
-      "<br>Puntos simulados: " +
-      puntosSimulacion.length;
+      "<br>Puntos de ruta: " +
+      puntosRuta.length +
+
+      "<br>Maniobras indexadas: " +
+      maniobras.length;
 
 
-    await actualizarNavegacion();
+    actualizarPantalla();
 
-  }
-
-  catch(error) {
+  } catch(error) {
 
     document.getElementById("simdata").innerHTML =
 
-      "❌ ERROR RUTA<br>" +
+      "❌ ERROR<br>" +
       error.message;
   }
 }
 
 
-/* =========================
+/* ==========================
    DENSIFICAR GEOMETRÍA
-========================= */
+========================== */
 
 function densificarGeometria(
   geometria,
@@ -374,16 +378,25 @@ function densificarGeometria(
     resultado.push(a);
 
 
-    const distancia =
+    const d =
       distanciaMetros(
-        a[1],a[0],
-        b[1],b[0]
+        a[1],
+        a[0],
+        b[1],
+        b[0]
       );
 
 
+    if (!Number.isFinite(d))
+      continue;
+
+
     const partes =
-      Math.floor(
-        distancia / separacion
+      Math.max(
+        1,
+        Math.ceil(
+          d / separacion
+        )
       );
 
 
@@ -397,37 +410,137 @@ function densificarGeometria(
         j / partes;
 
 
-      const lon =
+      resultado.push([
+
         a[0] +
-        (b[0] - a[0]) * t;
+        (b[0] - a[0]) * t,
 
-
-      const lat =
         a[1] +
-        (b[1] - a[1]) * t;
+        (b[1] - a[1]) * t
 
-
-      resultado.push(
-        [lon,lat]
-      );
+      ]);
     }
   }
 
 
-  resultado.push(
-    geometria[
-      geometria.length - 1
-    ]
-  );
+  if (geometria.length) {
+
+    resultado.push(
+      geometria[
+        geometria.length - 1
+      ]
+    );
+  }
 
 
   return resultado;
 }
 
 
-/* =========================
-   MANIOBRA
-========================= */
+/* ==========================
+   INDEXAR MANIOBRAS
+========================== */
+
+function construirIndiceManiobras() {
+
+  maniobras = [];
+
+  let indiceBusqueda = 0;
+
+
+  for (
+    let p = 0;
+    p < pasosRuta.length;
+    p++
+  ) {
+
+    const paso =
+      pasosRuta[p];
+
+
+    const lon =
+      paso.maneuver.location[0];
+
+    const lat =
+      paso.maneuver.location[1];
+
+
+    let mejorIndice =
+      indiceBusqueda;
+
+    let mejorDistancia =
+      Infinity;
+
+
+    /*
+      Buscamos hacia delante.
+
+      Así evitamos asociar una
+      maniobra con una carretera
+      anterior si la ruta se cruza.
+    */
+
+    for (
+      let i = indiceBusqueda;
+      i < puntosRuta.length;
+      i++
+    ) {
+
+      const punto =
+        puntosRuta[i];
+
+
+      const d =
+        distanciaMetros(
+          lat,
+          lon,
+          punto[1],
+          punto[0]
+        );
+
+
+      if (
+        Number.isFinite(d) &&
+        d < mejorDistancia
+      ) {
+
+        mejorDistancia = d;
+        mejorIndice = i;
+      }
+
+
+      /*
+        Cuando ya hemos encontrado
+        un punto muy cercano no hace
+        falta seguir buscando.
+      */
+
+      if (mejorDistancia < 2)
+        break;
+    }
+
+
+    maniobras.push({
+
+      paso:paso,
+
+      indicePunto:
+        mejorIndice,
+
+      error:
+        mejorDistancia
+    });
+
+
+    indiceBusqueda =
+      mejorIndice;
+  }
+}
+
+
+/* ==========================
+   COMANDO DE MANIOBRA
+========================== */
 
 function comandoManiobra(paso) {
 
@@ -441,14 +554,11 @@ function comandoManiobra(paso) {
   if (mod.includes("uturn"))
     return "T:UTURN";
 
-
   if (mod.includes("right"))
     return "T:RIGHT";
 
-
   if (mod.includes("left"))
     return "T:LEFT";
-
 
   if (
     mod.includes("straight") ||
@@ -462,67 +572,144 @@ function comandoManiobra(paso) {
 }
 
 
-/* =========================
-   ACTUALIZAR NAVEGACIÓN
-========================= */
+/* ==========================
+   DISTANCIA POR LA CARRETERA
+========================== */
 
-async function actualizarNavegacion() {
+function distanciaHastaManiobra(
+  desde,
+  hasta
+) {
 
   if (
-    !pasosRuta.length ||
-    indicePaso >= pasosRuta.length
-  )
+    desde < 0 ||
+    hasta < 0 ||
+    desde >= puntosRuta.length ||
+    hasta >= puntosRuta.length
+  ) {
+
+    return 0;
+  }
+
+
+  if (hasta <= desde)
+    return 0;
+
+
+  let total = 0;
+
+
+  for (
+    let i = desde;
+    i < hasta;
+    i++
+  ) {
+
+    const a =
+      puntosRuta[i];
+
+    const b =
+      puntosRuta[i + 1];
+
+
+    if (!a || !b)
+      continue;
+
+
+    const d =
+      distanciaMetros(
+        a[1],
+        a[0],
+        b[1],
+        b[0]
+      );
+
+
+    if (Number.isFinite(d)) {
+
+      total += d;
+    }
+  }
+
+
+  return total;
+}
+
+
+/* ==========================
+   ACTUALIZAR MANIOBRA
+========================== */
+
+function actualizarIndiceManiobra() {
+
+  /*
+    Si hemos llegado o sobrepasado
+    el punto de la maniobra,
+    avanzamos a la siguiente.
+  */
+
+  while (
+    indiceManiobra <
+    maniobras.length - 1 &&
+    indiceSimulacion >=
+    maniobras[indiceManiobra].indicePunto
+  ) {
+
+    indiceManiobra++;
+  }
+}
+
+
+/* ==========================
+   ACTUALIZAR PANTALLA
+========================== */
+
+async function actualizarPantalla() {
+
+  if (!maniobras.length)
     return;
 
 
-  /*
-    Comprobamos si estamos encima
-    de la maniobra actual.
-  */
+  actualizarIndiceManiobra();
 
-  let paso =
-    pasosRuta[indicePaso];
+
+  const actual =
+    maniobras[indiceManiobra];
+
+
+  if (!actual)
+    return;
+
+
+  const paso =
+    actual.paso;
 
 
   let distancia =
-    distanciaMetros(
+    distanciaHastaManiobra(
 
-      latActual,
-      lonActual,
+      indiceSimulacion,
 
-      paso.maneuver.location[1],
-      paso.maneuver.location[0]
+      actual.indicePunto
     );
 
 
   /*
-    Como la simulación sigue
-    exactamente la geometría de
-    OSRM, 12 m es suficiente.
+    Protección absoluta contra
+    NaN / Infinity.
   */
 
-  if (
-    distancia <= 12 &&
-    indicePaso <
-    pasosRuta.length - 1
-  ) {
+  if (!Number.isFinite(distancia)) {
 
-    indicePaso++;
-
-    paso =
-      pasosRuta[indicePaso];
-
-
-    distancia =
-      distanciaMetros(
-
-        latActual,
-        lonActual,
-
-        paso.maneuver.location[1],
-        paso.maneuver.location[0]
-      );
+    distancia = 0;
   }
+
+
+  const metros =
+    Math.max(
+      0,
+      Math.round(distancia)
+    );
 
 
   const comando =
@@ -530,22 +717,19 @@ async function actualizarNavegacion() {
 
 
   const calle =
-    paso.name || "Sin nombre";
-
-
-  const metros =
-    Math.round(distancia);
+    paso.name ||
+    "Sin nombre";
 
 
   document.getElementById("navdata").innerHTML =
 
     "🧭 <b>MANIOBRA " +
 
-    (indicePaso + 1) +
+    (indiceManiobra + 1) +
 
     " / " +
 
-    pasosRuta.length +
+    maniobras.length +
 
     "</b>" +
 
@@ -563,38 +747,68 @@ async function actualizarNavegacion() {
 
     metros +
 
-    " m</b>";
+    " m</b>" +
+
+    "<br><small>Punto ruta: " +
+
+    indiceSimulacion +
+
+    " → " +
+
+    actual.indicePunto +
+
+    "</small>";
 
 
   /*
-    Enviamos al ESP32.
+    Flecha y calle solo se vuelven
+    a enviar cuando cambia realmente
+    la maniobra.
   */
 
-  await enviar(comando);
+  if (
+    indiceManiobra !==
+    ultimaManiobraEnviada
+  ) {
+
+    await enviar(comando);
+
+    await esperar(80);
+
+    await enviar(
+      "C:" + calle
+    );
+
+    ultimaManiobraEnviada =
+      indiceManiobra;
+  }
+
 
   await esperar(50);
 
-  await enviar(
-    "C:" + calle
-  );
 
-  await esperar(50);
+  /*
+    Nunca enviamos NaN.
+  */
 
-  await enviar(
-    "D:" +
-    metros +
-    " m"
-  );
+  if (Number.isFinite(metros)) {
+
+    await enviar(
+      "D:" +
+      metros +
+      " m"
+    );
+  }
 }
 
 
-/* =========================
-   SIMULACIÓN
-========================= */
+/* ==========================
+   INICIAR SIMULACIÓN
+========================== */
 
 async function iniciarSimulacion() {
 
-  if (!puntosSimulacion.length) {
+  if (!puntosRuta.length) {
 
     alert(
       "Primero carga la ruta"
@@ -612,6 +826,26 @@ async function iniciarSimulacion() {
 
   indiceSimulacion = 0;
 
+  ultimaManiobraEnviada = -1;
+
+
+  /*
+    Empezamos en la primera
+    maniobra útil.
+  */
+
+  indiceManiobra = 0;
+
+
+  if (
+    maniobras.length > 1 &&
+    maniobras[0].paso.maneuver.type ===
+    "depart"
+  ) {
+
+    indiceManiobra = 1;
+  }
+
 
   await enviar("V:50");
 
@@ -620,26 +854,20 @@ async function iniciarSimulacion() {
     "▶️ SIMULACIÓN EN MARCHA";
 
 
-  /*
-    Cada 250 ms avanzamos
-    aproximadamente 5 metros.
+  await actualizarPantalla();
 
-    Equivale a unos 72 km/h
-    visualmente y permite probar
-    rápido toda la ruta.
-  */
 
   timer =
     setInterval(
       avanzarSimulacion,
-      250
+      350
     );
 }
 
 
-/* =========================
-   AVANZAR
-========================= */
+/* ==========================
+   AVANZAR SIMULACIÓN
+========================== */
 
 async function avanzarSimulacion() {
 
@@ -647,33 +875,32 @@ async function avanzarSimulacion() {
     return;
 
 
+  indiceSimulacion++;
+
+
   if (
     indiceSimulacion >=
-    puntosSimulacion.length
+    puntosRuta.length
   ) {
+
+    indiceSimulacion =
+      puntosRuta.length - 1;
+
+
+    await actualizarPantalla();
+
 
     detenerSimulacion();
 
+
     await enviar("V:0");
+
 
     document.getElementById("simdata").innerHTML =
       "🏁 SIMULACIÓN TERMINADA";
 
     return;
   }
-
-
-  const punto =
-    puntosSimulacion[
-      indiceSimulacion
-    ];
-
-
-  lonActual =
-    punto[0];
-
-  latActual =
-    punto[1];
 
 
   document.getElementById("simdata").innerHTML =
@@ -686,19 +913,16 @@ async function avanzarSimulacion() {
 
     " / " +
 
-    puntosSimulacion.length;
+    puntosRuta.length;
 
 
-  await actualizarNavegacion();
-
-
-  indiceSimulacion++;
+  await actualizarPantalla();
 }
 
 
-/* =========================
+/* ==========================
    DETENER
-========================= */
+========================== */
 
 function detenerSimulacion() {
 
@@ -714,9 +938,9 @@ function detenerSimulacion() {
 }
 
 
-/* =========================
-   DISTANCIA HAVERSINE
-========================= */
+/* ==========================
+   HAVERSINE
+========================== */
 
 function distanciaMetros(
   lat1,
@@ -725,42 +949,56 @@ function distanciaMetros(
   lon2
 ) {
 
-  const R = 6371000;
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2)
+  ) {
+
+    return Infinity;
+  }
+
+
+  const R =
+    6371000;
+
 
   const rad =
     Math.PI / 180;
 
 
   const dLat =
-    (lat2-lat1) * rad;
+    (lat2 - lat1) * rad;
 
 
   const dLon =
-    (lon2-lon1) * rad;
+    (lon2 - lon1) * rad;
 
 
   const a =
 
-    Math.sin(dLat/2) *
-    Math.sin(dLat/2) +
+    Math.sin(dLat / 2) *
+    Math.sin(dLat / 2) +
 
-    Math.cos(lat1*rad) *
-    Math.cos(lat2*rad) *
+    Math.cos(lat1 * rad) *
+    Math.cos(lat2 * rad) *
 
-    Math.sin(dLon/2) *
-    Math.sin(dLon/2);
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
 
 
-  return
-
-    R *
+  const c =
 
     2 *
 
     Math.atan2(
       Math.sqrt(a),
-      Math.sqrt(1-a)
+      Math.sqrt(1 - a)
     );
+
+
+  return R * c;
 }
 
 </script>
