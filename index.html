@@ -86,10 +86,6 @@ Sin ruta activa
 
 <script>
 
-/* =========================
-   CONFIGURACIÓN BLE
-========================= */
-
 const SERVICE_UUID =
 '12345678-1234-1234-1234-1234567890ab';
 
@@ -140,9 +136,7 @@ async function conectar() {
     document.getElementById("status").innerText =
       "✅ MotoGPS conectado";
 
-  }
-
-  catch(error) {
+  } catch(error) {
 
     document.getElementById("status").innerText =
       "❌ " + error;
@@ -168,9 +162,7 @@ async function enviar(texto) {
 
     return true;
 
-  }
-
-  catch(error) {
+  } catch(error) {
 
     document.getElementById("status").innerText =
       "❌ BLE: " + error;
@@ -253,8 +245,6 @@ async function actualizarGPS(pos) {
     " km/h";
 
 
-  /* VELOCIDAD AL ESP32 */
-
   if (
     characteristic &&
     velocidad !== ultimaVelocidadEnviada
@@ -267,8 +257,6 @@ async function actualizarGPS(pos) {
     }
   }
 
-
-  /* ACTUALIZAR NAVEGACIÓN */
 
   if (navegando) {
 
@@ -408,7 +396,6 @@ async function calcularRuta() {
     pasosRuta =
       datos.routes[0].legs[0].steps;
 
-
     indicePaso = 0;
 
     navegando = true;
@@ -420,9 +407,7 @@ async function calcularRuta() {
 
     await actualizarNavegacion();
 
-  }
-
-  catch(error) {
+  } catch(error) {
 
     salida.innerHTML =
       "❌ " + error.message;
@@ -481,28 +466,63 @@ async function enviarPasoActual() {
     pasosRuta[indicePaso];
 
 
-  const comando =
-    convertirManiobra(paso);
-
-
-  const calle =
-    paso.name || "Sin nombre";
-
-
-  await enviar(comando);
+  await enviar(
+    convertirManiobra(paso)
+  );
 
   await esperar(120);
 
+
   await enviar(
-    "C:" + calle
+    "C:" +
+    (paso.name || "Sin nombre")
   );
+
 
   ultimaDistanciaEnviada = null;
 }
 
 
 /* =========================
-   NAVEGACIÓN EN TIEMPO REAL
+   PINTAR MANIOBRA WEB
+========================= */
+
+function mostrarPasoActual(distancia) {
+
+  if (
+    indicePaso >= pasosRuta.length
+  )
+    return;
+
+
+  const paso =
+    pasosRuta[indicePaso];
+
+
+  document.getElementById("navdata").innerHTML =
+
+    "🧭 <b>MANIOBRA " +
+    (indicePaso + 1) +
+    " / " +
+    pasosRuta.length +
+    "</b><br><br>" +
+
+    convertirManiobra(paso) +
+
+    "<br>" +
+
+    (paso.name || "Sin nombre") +
+
+    "<br><br>" +
+
+    "📏 <b>" +
+    Math.round(distancia) +
+    " m</b>";
+}
+
+
+/* =========================
+   NAVEGACIÓN
 ========================= */
 
 async function actualizarNavegacion() {
@@ -542,27 +562,9 @@ async function actualizarNavegacion() {
     Math.round(distancia);
 
 
-  /* Actualizar pantalla web */
-
-  document.getElementById("navdata").innerHTML =
-
-    "🧭 <b>MANIOBRA " +
-    (indicePaso + 1) +
-    " / " +
-    pasosRuta.length +
-    "</b><br><br>" +
-
-    convertirManiobra(paso) +
-
-    "<br>" +
-
-    (paso.name || "Sin nombre") +
-
-    "<br><br>" +
-
-    "📏 <b>" +
-    distanciaRedondeada +
-    " m</b>";
+  mostrarPasoActual(
+    distanciaRedondeada
+  );
 
 
   /* ENVIAR DISTANCIA */
@@ -593,11 +595,7 @@ async function actualizarNavegacion() {
 
 
   /* =========================
-     PASAR A SIGUIENTE PASO
-     
-     Primera versión:
-     consideramos realizada la
-     maniobra al estar a <= 18 m
+     CAMBIO DE MANIOBRA
   ========================= */
 
   if (distancia <= 18) {
@@ -622,16 +620,65 @@ async function actualizarNavegacion() {
     }
 
 
-    await esperar(150);
+    await esperar(120);
 
     await enviarPasoActual();
+
+
+    /*
+      IMPORTANTE:
+      calculamos inmediatamente
+      la distancia al NUEVO paso
+      y actualizamos tanto web
+      como ESP32.
+    */
+
+    const nuevoPaso =
+      pasosRuta[indicePaso];
+
+
+    const nuevaLon =
+      nuevoPaso.maneuver.location[0];
+
+    const nuevaLat =
+      nuevoPaso.maneuver.location[1];
+
+
+    const nuevaDistancia =
+      distanciaMetros(
+        latActual,
+        lonActual,
+        nuevaLat,
+        nuevaLon
+      );
+
+
+    mostrarPasoActual(
+      nuevaDistancia
+    );
+
+
+    const nuevaDistanciaRedondeada =
+      Math.round(nuevaDistancia);
+
+
+    if (
+      await enviar(
+        "D:" +
+        nuevaDistanciaRedondeada +
+        " m"
+      )
+    ) {
+
+      ultimaDistanciaEnviada =
+        nuevaDistanciaRedondeada;
+    }
   }
 }
 
 
 /* =========================
-   DISTANCIA GPS
-   Fórmula Haversine
+   DISTANCIA HAVERSINE
 ========================= */
 
 function distanciaMetros(
