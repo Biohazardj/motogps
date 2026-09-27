@@ -1,163 +1,264 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MotoGPS</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #111;
-      color: white;
-      padding: 25px 15px;
-    }
+<title>MotoGPS</title>
 
-    button {
-      display: block;
-      width: 90%;
-      max-width: 350px;
-      margin: 15px auto;
-      padding: 17px;
-      font-size: 19px;
-      border-radius: 12px;
-      border: none;
-    }
+<style>
 
-    #connect { background: #2196F3; color: white; }
-    #gps { background: #ff9800; color: white; }
-    .send { background: #4CAF50; color: white; }
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background: #111;
+  color: white;
+  padding: 25px 15px;
+}
 
-    #status, #gpsdata {
-      margin: 20px auto;
-      line-height: 1.7;
-      font-size: 17px;
-    }
-  </style>
+button, input {
+  display: block;
+  width: 90%;
+  max-width: 350px;
+  margin: 15px auto;
+  padding: 17px;
+  font-size: 18px;
+  border-radius: 12px;
+  border: none;
+  box-sizing: border-box;
+}
+
+input {
+  background: white;
+  color: black;
+}
+
+#connect {
+  background: #2196F3;
+  color: white;
+}
+
+#gps {
+  background: #ff9800;
+  color: white;
+}
+
+#route {
+  background: #9c27b0;
+  color: white;
+}
+
+.send {
+  background: #4CAF50;
+  color: white;
+}
+
+#status,
+#gpsdata,
+#rutadata {
+  margin: 20px auto;
+  line-height: 1.6;
+  font-size: 17px;
+  max-width: 400px;
+}
+
+#rutadata {
+  text-align: left;
+  background: #222;
+  padding: 15px;
+  border-radius: 12px;
+}
+
+</style>
 </head>
 
 <body>
 
 <h1>MotoGPS</h1>
 
+
+<!-- BLUETOOTH -->
+
 <button id="connect" onclick="conectar()">
-  CONECTAR MOTOGPS
+CONECTAR MOTOGPS
 </button>
 
-<div id="status">Desconectado</div>
+<div id="status">
+Desconectado
+</div>
+
+
+<!-- GPS -->
 
 <button id="gps" onclick="iniciarGPS()">
-  ACTIVAR GPS
+ACTIVAR GPS
 </button>
 
 <div id="gpsdata">
-  GPS desactivado
+GPS desactivado
 </div>
 
+
+<hr>
+
+
+<!-- DESTINO -->
+
+<h2>Navegación</h2>
+
+<input
+id="destino"
+type="text"
+placeholder="Ej: Catedral de León">
+
+<button id="route" onclick="calcularRuta()">
+CALCULAR RUTA
+</button>
+
+<div id="rutadata">
+Sin ruta
+</div>
+
+
+<!-- PRUEBA BLE -->
+
 <button class="send" onclick="enviar('T:RIGHT')">
-  ENVIAR T:RIGHT
+ENVIAR T:RIGHT
 </button>
 
 <button class="send" onclick="enviar('T:LEFT')">
-  ENVIAR T:LEFT
+ENVIAR T:LEFT
 </button>
 
 
 <script>
 
 const SERVICE_UUID =
-  '12345678-1234-1234-1234-1234567890ab';
+'12345678-1234-1234-1234-1234567890ab';
 
 const CHARACTERISTIC_UUID =
-  '87654321-4321-4321-4321-ba0987654321';
+'87654321-4321-4321-4321-ba0987654321';
+
 
 let characteristic;
 
+let latActual = null;
+let lonActual = null;
 
-/* ---------- BLUETOOTH ---------- */
+
+/* =========================
+   BLUETOOTH
+========================= */
 
 async function conectar() {
 
   try {
 
     document.getElementById("status").innerText =
-      "Buscando MotoGPS...";
+    "Buscando MotoGPS...";
 
     const device =
-      await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'MotoGPS' }],
-        optionalServices: [SERVICE_UUID]
-      });
+    await navigator.bluetooth.requestDevice({
+
+      filters: [
+        { name: 'MotoGPS' }
+      ],
+
+      optionalServices: [
+        SERVICE_UUID
+      ]
+
+    });
+
 
     const server =
-      await device.gatt.connect();
+    await device.gatt.connect();
+
 
     const service =
-      await server.getPrimaryService(SERVICE_UUID);
+    await server.getPrimaryService(
+      SERVICE_UUID
+    );
+
 
     characteristic =
-      await service.getCharacteristic(
-        CHARACTERISTIC_UUID
-      );
+    await service.getCharacteristic(
+      CHARACTERISTIC_UUID
+    );
+
 
     document.getElementById("status").innerText =
-      "✅ MotoGPS conectado";
+    "✅ MotoGPS conectado";
 
   }
 
   catch(error) {
 
     document.getElementById("status").innerText =
-      "❌ " + error;
+    "❌ " + error;
 
   }
+
 }
+
 
 
 async function enviar(texto) {
 
   if (!characteristic) {
+
     document.getElementById("status").innerText =
-      "Primero conecta MotoGPS";
+    "Primero conecta MotoGPS";
+
     return;
+
   }
+
 
   try {
 
     const datos =
-      new TextEncoder().encode(texto);
+    new TextEncoder().encode(texto);
+
 
     await characteristic.writeValue(datos);
 
+
     document.getElementById("status").innerText =
-      "Enviado: " + texto;
+    "Enviado: " + texto;
 
   }
 
   catch(error) {
 
     document.getElementById("status").innerText =
-      "❌ " + error;
+    "❌ " + error;
 
   }
+
 }
 
 
-/* ---------- GPS ---------- */
+
+/* =========================
+   GPS
+========================= */
 
 function iniciarGPS() {
 
   if (!navigator.geolocation) {
 
     document.getElementById("gpsdata").innerText =
-      "Este navegador no permite GPS";
+    "Este navegador no permite GPS";
 
     return;
+
   }
 
+
   document.getElementById("gpsdata").innerText =
-    "Buscando posición...";
+  "Buscando posición...";
+
 
   navigator.geolocation.watchPosition(
 
@@ -166,44 +267,315 @@ function iniciarGPS() {
     errorGPS,
 
     {
+
       enableHighAccuracy: true,
+
       maximumAge: 0,
+
       timeout: 15000
+
     }
+
   );
+
 }
+
 
 
 function actualizarGPS(pos) {
 
+  latActual =
+  pos.coords.latitude;
+
+  lonActual =
+  pos.coords.longitude;
+
+
   const lat =
-    pos.coords.latitude.toFixed(6);
+  latActual.toFixed(6);
 
   const lon =
-    pos.coords.longitude.toFixed(6);
+  lonActual.toFixed(6);
+
 
   const precision =
-    Math.round(pos.coords.accuracy);
+  Math.round(
+    pos.coords.accuracy
+  );
+
 
   let velocidad = 0;
 
+
   if (pos.coords.speed !== null) {
+
     velocidad =
-      Math.round(pos.coords.speed * 3.6);
+    Math.round(
+      pos.coords.speed * 3.6
+    );
+
   }
 
+
   document.getElementById("gpsdata").innerHTML =
-    "📍 Latitud: " + lat +
-    "<br>📍 Longitud: " + lon +
-    "<br>🎯 Precisión: " + precision + " m" +
-    "<br>🏍️ Velocidad: " + velocidad + " km/h";
+
+  "📍 Latitud: " + lat +
+
+  "<br>📍 Longitud: " + lon +
+
+  "<br>🎯 Precisión: " + precision + " m" +
+
+  "<br>🏍️ Velocidad: " + velocidad + " km/h";
+
 }
+
 
 
 function errorGPS(error) {
 
   document.getElementById("gpsdata").innerText =
-    "❌ Error GPS: " + error.message;
+  "❌ Error GPS: " + error.message;
+
+}
+
+
+
+/* =========================
+   BUSCAR DESTINO
+========================= */
+
+async function buscarDestino(texto) {
+
+  const url =
+  "https://nominatim.openstreetmap.org/search" +
+  "?format=json" +
+  "&limit=1" +
+  "&countrycodes=es" +
+  "&q=" +
+  encodeURIComponent(texto);
+
+
+  const respuesta =
+  await fetch(url);
+
+
+  const datos =
+  await respuesta.json();
+
+
+  if (datos.length === 0) {
+
+    throw new Error(
+      "Destino no encontrado"
+    );
+
+  }
+
+
+  return {
+
+    lat:
+    parseFloat(datos[0].lat),
+
+    lon:
+    parseFloat(datos[0].lon),
+
+    nombre:
+    datos[0].display_name
+
+  };
+
+}
+
+
+
+/* =========================
+   CALCULAR RUTA
+========================= */
+
+async function calcularRuta() {
+
+  const salida =
+  document.getElementById("rutadata");
+
+
+  try {
+
+
+    if (
+      latActual === null ||
+      lonActual === null
+    ) {
+
+      salida.innerHTML =
+      "❌ Primero activa el GPS";
+
+      return;
+
+    }
+
+
+    const texto =
+    document
+    .getElementById("destino")
+    .value
+    .trim();
+
+
+    if (!texto) {
+
+      salida.innerHTML =
+      "❌ Escribe un destino";
+
+      return;
+
+    }
+
+
+    salida.innerHTML =
+    "🔎 Buscando destino...";
+
+
+    const destino =
+    await buscarDestino(texto);
+
+
+    salida.innerHTML =
+    "🗺️ Calculando ruta...";
+
+
+    const url =
+
+    "https://router.project-osrm.org/route/v1/driving/" +
+
+    lonActual + "," +
+    latActual + ";" +
+
+    destino.lon + "," +
+    destino.lat +
+
+    "?overview=false&steps=true";
+
+
+    const respuesta =
+    await fetch(url);
+
+
+    const datos =
+    await respuesta.json();
+
+
+    if (
+      datos.code !== "Ok" ||
+      !datos.routes ||
+      datos.routes.length === 0
+    ) {
+
+      throw new Error(
+        "No se pudo calcular la ruta"
+      );
+
+    }
+
+
+    const ruta =
+    datos.routes[0];
+
+
+    const pasos =
+    ruta.legs[0].steps;
+
+
+    let html = "";
+
+
+    html +=
+    "<b>Destino:</b><br>" +
+    destino.nombre +
+    "<br><br>";
+
+
+    html +=
+    "<b>Distancia total:</b> " +
+    (ruta.distance / 1000).toFixed(1) +
+    " km<br>";
+
+
+    html +=
+    "<b>Tiempo aproximado:</b> " +
+    Math.round(ruta.duration / 60) +
+    " min";
+
+
+    html +=
+    "<hr>";
+
+
+    html +=
+    "<b>Primeras maniobras:</b><br><br>";
+
+
+    pasos.slice(0, 8).forEach(
+
+      function(paso, indice) {
+
+
+        const tipo =
+        paso.maneuver.type;
+
+
+        const modificador =
+        paso.maneuver.modifier || "";
+
+
+        const calle =
+        paso.name || "Sin nombre";
+
+
+        const distancia =
+        Math.round(paso.distance);
+
+
+        html +=
+
+        (indice + 1) +
+        ". " +
+
+        "<b>" +
+        tipo +
+        " " +
+        modificador +
+        "</b>" +
+
+        "<br>" +
+
+        calle +
+
+        "<br>" +
+
+        distancia +
+        " m" +
+
+        "<br><br>";
+
+      }
+
+    );
+
+
+    salida.innerHTML =
+    html;
+
+  }
+
+
+  catch(error) {
+
+    salida.innerHTML =
+    "❌ " + error.message;
+
+  }
+
 }
 
 </script>
