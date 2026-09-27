@@ -4,72 +4,72 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>MotoGPS v14</title>
+<title>MotoGPS v15</title>
 
 <style>
 body {
   font-family: Arial, sans-serif;
-  text-align:center;
-  background:#111;
-  color:white;
-  padding:20px 12px;
+  text-align: center;
+  background: #111;
+  color: white;
+  padding: 20px 12px;
 }
 
 input {
-  width:88%;
-  max-width:360px;
-  padding:15px;
-  margin:8px auto;
-  font-size:17px;
-  border-radius:10px;
-  border:none;
-  display:block;
+  width: 88%;
+  max-width: 360px;
+  padding: 15px;
+  margin: 8px auto;
+  font-size: 17px;
+  border-radius: 10px;
+  border: none;
+  display: block;
 }
 
 button {
-  display:block;
-  width:92%;
-  max-width:390px;
-  margin:12px auto;
-  padding:17px;
-  font-size:17px;
-  border:none;
-  border-radius:12px;
-  color:white;
+  display: block;
+  width: 92%;
+  max-width: 390px;
+  margin: 12px auto;
+  padding: 17px;
+  font-size: 17px;
+  border: none;
+  border-radius: 12px;
+  color: white;
 }
 
-#connect { background:#2196F3; }
-#gps { background:#ff9800; }
-#route { background:#9c27b0; }
-#navigate { background:#00a86b; }
-#stop { background:#d32f2f; }
+#connect { background: #2196F3; }
+#gps { background: #ff9800; }
+#route { background: #9c27b0; }
+#navigate { background: #00a86b; }
+#stop { background: #d32f2f; }
 
 #status,
 #gpsdata,
 #routedata,
 #navdata {
-  max-width:400px;
-  margin:15px auto;
-  line-height:1.55;
+  max-width: 400px;
+  margin: 15px auto;
+  line-height: 1.55;
 }
 
 #gpsdata {
-  color:#7CFC98;
+  color: #7CFC98;
 }
 
 #navdata {
-  text-align:left;
-  background:#222;
-  padding:17px;
-  border-radius:12px;
-  font-size:17px;
+  text-align: left;
+  background: #222;
+  padding: 17px;
+  border-radius: 12px;
+  font-size: 17px;
 }
 </style>
 </head>
 
 <body>
 
-<h1>🏍️ MotoGPS v14</h1>
+<h1>🏍️ MotoGPS v15</h1>
 
 <button id="connect" onclick="conectar()">
 CONECTAR MOTOGPS
@@ -96,7 +96,7 @@ GPS desactivado
 <input
   id="destino"
   type="text"
-  placeholder="Ej: Valencia de Don Juan"
+  placeholder="Ej: Catedral de León"
 >
 
 <button id="route" onclick="calcularRuta()">
@@ -122,9 +122,9 @@ Esperando navegación
 
 <script>
 
-/* =========================
+/* ======================================
    BLE
-========================= */
+====================================== */
 
 const SERVICE_UUID =
 "12345678-1234-1234-1234-1234567890ab";
@@ -135,33 +135,24 @@ const CHARACTERISTIC_UUID =
 let characteristic = null;
 
 
-/* =========================
+/* ======================================
    GPS
-========================= */
+====================================== */
 
 let watchId = null;
 
 let latActual = null;
 let lonActual = null;
-
 let velocidadActual = 0;
 let precisionActual = null;
 
 
-/* =========================
-   DESTINO
-========================= */
-
-let destinoActual = null;
-
-
-/* =========================
+/* ======================================
    RUTA
-========================= */
+====================================== */
 
 let pasosRuta = [];
 let puntosRuta = [];
-let distanciasAcumuladas = [];
 let maniobras = [];
 
 let indiceRutaActual = 0;
@@ -169,39 +160,34 @@ let indiceManiobra = 0;
 
 let navegando = false;
 
-
-/* =========================
-   BLE ESTADO
-========================= */
-
 let ultimaManiobraEnviada = -1;
 let ultimaDistanciaEnviada = null;
 let ultimaVelocidadEnviada = null;
 
 
-/* =========================
-   DETECCIÓN DE DESVÍO
-========================= */
+/* ======================================
+   DESTINO - NUEVO V15
+====================================== */
 
-let distanciaRutaActual = Infinity;
+let destinoActual = null;
 
-let progresoAnterior = null;
-let distanciaManiobraAnterior = null;
 
-let contadorAlejamiento = 0;
+/* ======================================
+   RECÁLCULO - NUEVO V15
+====================================== */
 
+let contadorFueraRuta = 0;
 let recalculando = false;
-
 let ultimoRecalculo = 0;
 
-const LECTURAS_DESVIO = 3;
-const DISTANCIA_FUERA_RUTA = 35;
+const DISTANCIA_FUERA_RUTA = 40;
+const LECTURAS_FUERA_RUTA = 3;
 const TIEMPO_ENTRE_RECALCULOS = 10000;
 
 
-/* =========================
+/* ======================================
    BLUETOOTH
-========================= */
+====================================== */
 
 async function conectar() {
 
@@ -212,8 +198,8 @@ async function conectar() {
 
     const device =
       await navigator.bluetooth.requestDevice({
-        filters:[{name:"MotoGPS"}],
-        optionalServices:[SERVICE_UUID]
+        filters: [{ name: "MotoGPS" }],
+        optionalServices: [SERVICE_UUID]
       });
 
     const server =
@@ -232,7 +218,7 @@ async function conectar() {
     document.getElementById("status").innerText =
       "✅ MotoGPS conectado";
 
-  } catch(error) {
+  } catch (error) {
 
     document.getElementById("status").innerText =
       "❌ " + error.message;
@@ -240,9 +226,9 @@ async function conectar() {
 }
 
 
-/* =========================
+/* ======================================
    ENVÍO BLE
-========================= */
+====================================== */
 
 async function enviar(texto) {
 
@@ -258,7 +244,7 @@ async function enviar(texto) {
 
     return true;
 
-  } catch(error) {
+  } catch (error) {
 
     document.getElementById("status").innerText =
       "❌ BLE: " + error.message;
@@ -276,9 +262,9 @@ function esperar(ms) {
 }
 
 
-/* =========================
-   GPS
-========================= */
+/* ======================================
+   ACTIVAR GPS
+====================================== */
 
 function activarGPS() {
 
@@ -295,9 +281,7 @@ function activarGPS() {
 
   if (watchId !== null) {
 
-    navigator.geolocation.clearWatch(
-      watchId
-    );
+    navigator.geolocation.clearWatch(watchId);
   }
 
   watchId =
@@ -308,17 +292,17 @@ function activarGPS() {
       errorGPS,
 
       {
-        enableHighAccuracy:true,
-        maximumAge:0,
-        timeout:15000
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000
       }
     );
 }
 
 
-/* =========================
+/* ======================================
    NUEVA POSICIÓN GPS
-========================= */
+====================================== */
 
 async function recibirPosicion(pos) {
 
@@ -367,6 +351,12 @@ async function recibirPosicion(pos) {
     velocidadActual +
     " km/h";
 
+  /*
+    Igual que V13:
+    cada nueva posición GPS
+    actualiza la navegación.
+  */
+
   if (
     navegando &&
     !recalculando
@@ -384,9 +374,9 @@ function errorGPS(error) {
 }
 
 
-/* =========================
-   BUSCAR DESTINO
-========================= */
+/* ======================================
+   GEOCODIFICAR DESTINO
+====================================== */
 
 async function buscarDestino(texto) {
 
@@ -395,8 +385,11 @@ async function buscarDestino(texto) {
     "https://nominatim.openstreetmap.org/search" +
 
     "?format=json" +
+
     "&limit=1" +
+
     "&countrycodes=es" +
+
     "&q=" +
 
     encodeURIComponent(texto);
@@ -423,9 +416,9 @@ async function buscarDestino(texto) {
 
   return {
 
-    lat:Number(datos[0].lat),
+    lat: Number(datos[0].lat),
 
-    lon:Number(datos[0].lon),
+    lon: Number(datos[0].lon),
 
     nombre:
       datos[0].display_name
@@ -433,9 +426,9 @@ async function buscarDestino(texto) {
 }
 
 
-/* =========================
+/* ======================================
    CALCULAR RUTA INICIAL
-========================= */
+====================================== */
 
 async function calcularRuta() {
 
@@ -445,7 +438,7 @@ async function calcularRuta() {
   ) {
 
     alert(
-      "Primero activa el GPS."
+      "Primero activa el GPS y espera a tener posición."
     );
 
     return;
@@ -474,11 +467,12 @@ async function calcularRuta() {
     destinoActual =
       await buscarDestino(texto);
 
-    await generarRuta(
-      false
-    );
+    document.getElementById("routedata").innerText =
+      "🌐 Calculando ruta...";
 
-  } catch(error) {
+    await generarRuta(false);
+
+  } catch (error) {
 
     document.getElementById("routedata").innerHTML =
 
@@ -488,16 +482,22 @@ async function calcularRuta() {
 }
 
 
-/* =========================
-   GENERAR / RECALCULAR RUTA
-========================= */
+/* ======================================
+   GENERAR RUTA
 
-async function generarRuta(
-  esRecalculo
-) {
+   La lógica interior es la de V13.
+   Ahora sirve tanto para ruta inicial
+   como para recálculo.
+====================================== */
 
-  if (!destinoActual)
-    return;
+async function generarRuta(esRecalculo) {
+
+  if (!destinoActual) {
+
+    throw new Error(
+      "No hay destino guardado"
+    );
+  }
 
   const url =
 
@@ -554,9 +554,12 @@ async function generarRuta(
       5
     );
 
-  construirDistanciasAcumuladas();
-
   construirIndiceManiobras();
+
+  /*
+    EXACTAMENTE como V13:
+    reiniciamos seguimiento.
+  */
 
   indiceRutaActual = 0;
 
@@ -575,11 +578,9 @@ async function generarRuta(
 
   ultimaManiobraEnviada = -1;
   ultimaDistanciaEnviada = null;
+  ultimaVelocidadEnviada = null;
 
-  progresoAnterior = null;
-  distanciaManiobraAnterior = null;
-
-  contadorAlejamiento = 0;
+  contadorFueraRuta = 0;
 
   const distanciaKm =
     datos.routes[0].distance / 1000;
@@ -617,15 +618,22 @@ async function generarRuta(
 
     puntosRuta.length;
 
+  /*
+    Igual que V13:
+    localizar inmediatamente el GPS
+    dentro de la nueva ruta.
+  */
+
   localizarEnRuta();
 
   actualizarPantallaWeb();
 }
 
 
-/* =========================
-   DENSIFICAR
-========================= */
+/* ======================================
+   DENSIFICAR GEOMETRÍA
+   SIN CAMBIOS RESPECTO A V13
+====================================== */
 
 function densificarGeometria(
   geometria,
@@ -698,55 +706,10 @@ function densificarGeometria(
 }
 
 
-/* =========================
-   DISTANCIAS ACUMULADAS
-========================= */
-
-function construirDistanciasAcumuladas() {
-
-  distanciasAcumuladas = [];
-
-  if (!puntosRuta.length)
-    return;
-
-  distanciasAcumuladas[0] = 0;
-
-  for (
-    let i = 1;
-    i < puntosRuta.length;
-    i++
-  ) {
-
-    const a =
-      puntosRuta[i - 1];
-
-    const b =
-      puntosRuta[i];
-
-    const d =
-      distanciaMetros(
-        a[1],
-        a[0],
-        b[1],
-        b[0]
-      );
-
-    distanciasAcumuladas[i] =
-
-      distanciasAcumuladas[i - 1] +
-
-      (
-        Number.isFinite(d)
-          ? d
-          : 0
-      );
-  }
-}
-
-
-/* =========================
-   INDEXAR MANIOBRAS
-========================= */
+/* ======================================
+   ASOCIAR MANIOBRAS A LA RUTA
+   SIN CAMBIOS RESPECTO A V13
+====================================== */
 
 function construirIndiceManiobras() {
 
@@ -807,10 +770,13 @@ function construirIndiceManiobras() {
 
     maniobras.push({
 
-      paso:paso,
+      paso: paso,
 
       indicePunto:
-        mejorIndice
+        mejorIndice,
+
+      error:
+        mejorDistancia
     });
 
     indiceBusqueda =
@@ -819,9 +785,10 @@ function construirIndiceManiobras() {
 }
 
 
-/* =========================
-   LOCALIZAR GPS EN RUTA
-========================= */
+/* ======================================
+   LOCALIZAR GPS EN LA RUTA
+   V13 ORIGINAL
+====================================== */
 
 function localizarEnRuta() {
 
@@ -833,6 +800,15 @@ function localizarEnRuta() {
 
     return null;
   }
+
+  /*
+    Buscamos alrededor de la posición
+    anterior de la ruta.
+
+    Permitimos mirar bastante hacia
+    delante y algo hacia atrás para
+    absorber saltos del GPS.
+  */
 
   let inicio =
     Math.max(
@@ -846,12 +822,15 @@ function localizarEnRuta() {
       indiceRutaActual + 300
     );
 
+  /*
+    En la primera localización
+    buscamos toda la ruta.
+  */
+
   if (indiceRutaActual === 0) {
 
     inicio = 0;
-
-    fin =
-      puntosRuta.length - 1;
+    fin = puntosRuta.length - 1;
   }
 
   let mejorIndice =
@@ -887,6 +866,11 @@ function localizarEnRuta() {
     }
   }
 
+  /*
+    No permitimos retrocesos grandes
+    provocados por ruido del GPS.
+  */
+
   if (
     mejorIndice >=
     indiceRutaActual - 8
@@ -899,11 +883,7 @@ function localizarEnRuta() {
       );
   }
 
-  distanciaRutaActual =
-    mejorDistancia;
-
   return {
-
     indice:
       indiceRutaActual,
 
@@ -913,9 +893,10 @@ function localizarEnRuta() {
 }
 
 
-/* =========================
-   MANIOBRA ACTUAL
-========================= */
+/* ======================================
+   SIGUIENTE MANIOBRA
+   V13 ORIGINAL
+====================================== */
 
 function actualizarIndiceManiobra() {
 
@@ -934,9 +915,14 @@ function actualizarIndiceManiobra() {
 }
 
 
-/* =========================
-   DISTANCIA HASTA MANIOBRA
-========================= */
+/* ======================================
+   DISTANCIA POR LA RUTA
+   V13 ORIGINAL
+
+   IMPORTANTE:
+   No usamos las distancias acumuladas
+   introducidas posteriormente.
+====================================== */
 
 function distanciaHastaManiobra(
   desde,
@@ -956,27 +942,45 @@ function distanciaHastaManiobra(
   if (hasta <= desde)
     return 0;
 
-  if (
-    distanciasAcumuladas.length ===
-    puntosRuta.length
+  let total = 0;
+
+  for (
+    let i = desde;
+    i < hasta;
+    i++
   ) {
 
-    return Math.max(
+    const a =
+      puntosRuta[i];
 
-      0,
+    const b =
+      puntosRuta[i + 1];
 
-      distanciasAcumuladas[hasta] -
-      distanciasAcumuladas[desde]
-    );
+    if (!a || !b)
+      continue;
+
+    const d =
+      distanciaMetros(
+        a[1],
+        a[0],
+        b[1],
+        b[0]
+      );
+
+    if (Number.isFinite(d)) {
+
+      total += d;
+    }
   }
 
-  return 0;
+  return total;
 }
 
 
-/* =========================
-   MANIOBRA BLE
-========================= */
+/* ======================================
+   MANIOBRA → ESP32
+   V13 ORIGINAL
+====================================== */
 
 function comandoManiobra(paso) {
 
@@ -1008,97 +1012,70 @@ function comandoManiobra(paso) {
 }
 
 
-/* =========================
+/* ======================================
    DETECTAR DESVÍO
-========================= */
+   NUEVO V15
+====================================== */
 
 async function comprobarDesvio(
-  metrosManiobra
+  distanciaRuta
 ) {
+
+  /*
+    No tomamos decisiones estando
+    prácticamente parados.
+  */
 
   if (velocidadActual < 2) {
 
-    contadorAlejamiento = 0;
-
-    progresoAnterior =
-      indiceRutaActual;
-
-    distanciaManiobraAnterior =
-      metrosManiobra;
+    contadorFueraRuta = 0;
 
     return;
   }
 
-  let sospechoso = false;
-
-
   /*
-   CASO 1:
-   lejos de la ruta.
+    Si la precisión GPS es muy mala,
+    tampoco provocamos un recálculo.
   */
 
   if (
-    distanciaRutaActual >
-    DISTANCIA_FUERA_RUTA
+    Number.isFinite(precisionActual) &&
+    precisionActual > 35
   ) {
 
-    sospechoso = true;
+    contadorFueraRuta = 0;
+
+    return;
   }
 
-
   /*
-   CASO 2:
-   nos alejamos de la
-   siguiente maniobra.
+    La V15 solamente considera aquí
+    la distancia física a la ruta.
+
+    No utilizamos:
+    - índice sin avanzar
+    - distancia a maniobra aumentando
+
+    porque pueden producir falsos
+    positivos.
   */
 
   if (
-    distanciaManiobraAnterior !== null &&
-    metrosManiobra >
-      distanciaManiobraAnterior + 3
+    Number.isFinite(distanciaRuta) &&
+    distanciaRuta >
+      DISTANCIA_FUERA_RUTA
   ) {
 
-    sospechoso = true;
-  }
-
-
-  /*
-   CASO 3:
-   nos movemos pero no
-   progresamos por la ruta.
-  */
-
-  if (
-    progresoAnterior !== null &&
-    indiceRutaActual <=
-      progresoAnterior &&
-    velocidadActual >= 3
-  ) {
-
-    sospechoso = true;
-  }
-
-
-  if (sospechoso) {
-
-    contadorAlejamiento++;
+    contadorFueraRuta++;
 
   } else {
 
-    contadorAlejamiento = 0;
+    contadorFueraRuta = 0;
   }
 
-
-  progresoAnterior =
-    indiceRutaActual;
-
-  distanciaManiobraAnterior =
-    metrosManiobra;
-
-
   if (
-    contadorAlejamiento >=
-    LECTURAS_DESVIO
+    contadorFueraRuta >=
+    LECTURAS_FUERA_RUTA
   ) {
 
     await recalcularRuta();
@@ -1106,9 +1083,10 @@ async function comprobarDesvio(
 }
 
 
-/* =========================
-   RECALCULAR
-========================= */
+/* ======================================
+   RECALCULAR RUTA
+   NUEVO V15
+====================================== */
 
 async function recalcularRuta() {
 
@@ -1135,7 +1113,7 @@ async function recalcularRuta() {
 
   ultimoRecalculo = ahora;
 
-  contadorAlejamiento = 0;
+  contadorFueraRuta = 0;
 
   document.getElementById(
     "navdata"
@@ -1143,7 +1121,7 @@ async function recalcularRuta() {
 
     "🔄 <b>RECALCULANDO RUTA...</b>" +
 
-    "<br><br>Nueva posición GPS:" +
+    "<br><br>GPS:" +
 
     "<br>" +
     latActual.toFixed(6) +
@@ -1153,14 +1131,9 @@ async function recalcularRuta() {
 
   try {
 
-    await generarRuta(
-      true
-    );
+    await generarRuta(true);
 
-    ultimaManiobraEnviada = -1;
-    ultimaDistanciaEnviada = null;
-
-  } catch(error) {
+  } catch (error) {
 
     document.getElementById(
       "navdata"
@@ -1176,6 +1149,12 @@ async function recalcularRuta() {
     recalculando = false;
   }
 
+  /*
+    Una vez construida la nueva ruta,
+    actualizamos inmediatamente la
+    navegación desde el GPS actual.
+  */
+
   if (navegando) {
 
     await actualizarNavegacionGPS();
@@ -1183,9 +1162,12 @@ async function recalcularRuta() {
 }
 
 
-/* =========================
-   ACTUALIZAR NAVEGACIÓN
-========================= */
+/* ======================================
+   NAVEGACIÓN GPS
+
+   Seguimiento V13 +
+   llamada al detector V15 al final.
+====================================== */
 
 async function actualizarNavegacionGPS() {
 
@@ -1233,13 +1215,6 @@ async function actualizarNavegacionGPS() {
       Math.round(distancia)
     );
 
-  await comprobarDesvio(
-    metros
-  );
-
-  if (recalculando)
-    return;
-
   const comando =
     comandoManiobra(
       actual.paso
@@ -1250,16 +1225,17 @@ async function actualizarNavegacionGPS() {
     "Sin nombre";
 
 
-  /* FLECHA + CALLE */
+  /*
+    Flecha y calle solamente
+    cuando cambia la maniobra.
+  */
 
   if (
     indiceManiobra !==
     ultimaManiobraEnviada
   ) {
 
-    await enviar(
-      comando
-    );
+    await enviar(comando);
 
     await esperar(70);
 
@@ -1272,7 +1248,10 @@ async function actualizarNavegacionGPS() {
   }
 
 
-  /* DISTANCIA */
+  /*
+    Distancia: igual que V13,
+    solo si cambia al menos 5 m.
+  */
 
   if (
     ultimaDistanciaEnviada === null ||
@@ -1295,7 +1274,9 @@ async function actualizarNavegacionGPS() {
   }
 
 
-  /* VELOCIDAD */
+  /*
+    Velocidad.
+  */
 
   if (
     ultimaVelocidadEnviada === null ||
@@ -1314,15 +1295,31 @@ async function actualizarNavegacionGPS() {
       velocidadActual;
   }
 
+
+  /*
+    Primero hacemos todo lo que hacía
+    V13 y actualizamos pantalla.
+  */
+
   actualizarPantallaWeb(
+    localizacion.distancia
+  );
+
+
+  /*
+    Y SOLO DESPUÉS añadimos la capa
+    de detección de desvío.
+  */
+
+  await comprobarDesvio(
     localizacion.distancia
   );
 }
 
 
-/* =========================
-   PANTALLA WEB
-========================= */
+/* ======================================
+   INFORMACIÓN WEB
+====================================== */
 
 function actualizarPantallaWeb(
   distanciaRuta = null
@@ -1343,9 +1340,7 @@ function actualizarPantallaWeb(
 
   const distancia =
     distanciaHastaManiobra(
-
       indiceRutaActual,
-
       actual.indicePunto
     );
 
@@ -1393,6 +1388,7 @@ function actualizarPantallaWeb(
 
     puntosRuta.length;
 
+
   if (
     Number.isFinite(
       distanciaRuta
@@ -1410,15 +1406,22 @@ function actualizarPantallaWeb(
       " m";
   }
 
+
+  /*
+    Única incorporación visual
+    respecto a V13.
+  */
+
   texto +=
 
-    "<br>⚠️ Desvío: " +
+    "<br>⚠️ Fuera de ruta: " +
 
-    contadorAlejamiento +
+    contadorFueraRuta +
 
     " / " +
 
-    LECTURAS_DESVIO;
+    LECTURAS_FUERA_RUTA;
+
 
   document.getElementById(
     "navdata"
@@ -1426,9 +1429,9 @@ function actualizarPantallaWeb(
 }
 
 
-/* =========================
-   INICIAR
-========================= */
+/* ======================================
+   INICIAR NAVEGACIÓN
+====================================== */
 
 async function iniciarNavegacion() {
 
@@ -1443,10 +1446,7 @@ async function iniciarNavegacion() {
 
   navegando = true;
 
-  contadorAlejamiento = 0;
-
-  progresoAnterior = null;
-  distanciaManiobraAnterior = null;
+  contadorFueraRuta = 0;
 
   ultimaManiobraEnviada = -1;
   ultimaDistanciaEnviada = null;
@@ -1456,19 +1456,17 @@ async function iniciarNavegacion() {
 }
 
 
-/* =========================
-   DETENER
-========================= */
+/* ======================================
+   DETENER NAVEGACIÓN
+====================================== */
 
 async function detenerNavegacion() {
 
   navegando = false;
 
-  contadorAlejamiento = 0;
+  contadorFueraRuta = 0;
 
-  await enviar(
-    "V:0"
-  );
+  await enviar("V:0");
 
   document.getElementById(
     "navdata"
@@ -1478,9 +1476,10 @@ async function detenerNavegacion() {
 }
 
 
-/* =========================
+/* ======================================
    HAVERSINE
-========================= */
+   V13 ORIGINAL
+====================================== */
 
 function distanciaMetros(
   lat1,
@@ -1499,8 +1498,7 @@ function distanciaMetros(
     return Infinity;
   }
 
-  const R =
-    6371000;
+  const R = 6371000;
 
   const rad =
     Math.PI / 180;
