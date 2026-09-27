@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>MotoGPS</title>
 
 <style>
@@ -32,36 +31,18 @@ input {
   color: black;
 }
 
-#connect {
-  background: #2196F3;
-  color: white;
-}
+#connect { background: #2196F3; color: white; }
+#gps { background: #ff9800; color: white; }
+#route { background: #9c27b0; color: white; }
 
-#gps {
-  background: #ff9800;
-  color: white;
-}
-
-#route {
-  background: #9c27b0;
-  color: white;
-}
-
-.send {
-  background: #4CAF50;
-  color: white;
-}
-
-#status,
-#gpsdata,
-#rutadata {
+#status, #gpsdata, #navdata {
   margin: 20px auto;
   line-height: 1.6;
   font-size: 17px;
   max-width: 400px;
 }
 
-#rutadata {
+#navdata {
   text-align: left;
   background: #222;
   padding: 15px;
@@ -78,44 +59,36 @@ input {
 CONECTAR MOTOGPS
 </button>
 
-<div id="status">
-Desconectado
-</div>
+<div id="status">Desconectado</div>
 
 <button id="gps" onclick="iniciarGPS()">
 ACTIVAR GPS
 </button>
 
-<div id="gpsdata">
-GPS desactivado
-</div>
+<div id="gpsdata">GPS desactivado</div>
 
 <hr>
 
 <h2>Navegación</h2>
 
 <input
-id="destino"
-type="text"
-placeholder="Ej: Catedral de León">
+  id="destino"
+  type="text"
+  placeholder="Ej: Catedral de León">
 
 <button id="route" onclick="calcularRuta()">
-CALCULAR RUTA
+INICIAR NAVEGACIÓN
 </button>
 
-<div id="rutadata">
-Sin ruta
+<div id="navdata">
+Sin ruta activa
 </div>
 
-<button class="send" onclick="enviar('T:RIGHT')">
-ENVIAR T:RIGHT
-</button>
-
-<button class="send" onclick="enviar('T:LEFT')">
-ENVIAR T:LEFT
-</button>
-
 <script>
+
+/* =========================
+   CONFIGURACIÓN BLE
+========================= */
 
 const SERVICE_UUID =
 '12345678-1234-1234-1234-1234567890ab';
@@ -123,13 +96,17 @@ const SERVICE_UUID =
 const CHARACTERISTIC_UUID =
 '87654321-4321-4321-4321-ba0987654321';
 
-let characteristic;
+let characteristic = null;
 
 let latActual = null;
 let lonActual = null;
 
-/* Última velocidad enviada al ESP32 */
 let ultimaVelocidadEnviada = null;
+let ultimaDistanciaEnviada = null;
+
+let pasosRuta = [];
+let indicePaso = 0;
+let navegando = false;
 
 
 /* =========================
@@ -141,53 +118,51 @@ async function conectar() {
   try {
 
     document.getElementById("status").innerText =
-    "Buscando MotoGPS...";
+      "Buscando MotoGPS...";
 
     const device =
-    await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'MotoGPS' }],
-      optionalServices: [SERVICE_UUID]
-    });
+      await navigator.bluetooth.requestDevice({
+        filters: [{ name: 'MotoGPS' }],
+        optionalServices: [SERVICE_UUID]
+      });
 
     const server =
-    await device.gatt.connect();
+      await device.gatt.connect();
 
     const service =
-    await server.getPrimaryService(SERVICE_UUID);
+      await server.getPrimaryService(SERVICE_UUID);
 
     characteristic =
-    await service.getCharacteristic(
-      CHARACTERISTIC_UUID
-    );
+      await service.getCharacteristic(
+        CHARACTERISTIC_UUID
+      );
 
     document.getElementById("status").innerText =
-    "✅ MotoGPS conectado";
+      "✅ MotoGPS conectado";
 
   }
 
   catch(error) {
 
     document.getElementById("status").innerText =
-    "❌ " + error;
-
+      "❌ " + error;
   }
 }
 
 
 /* =========================
-   ENVIAR BLE
+   ENVÍO BLE
 ========================= */
 
 async function enviar(texto) {
 
-  if (!characteristic) {
+  if (!characteristic)
     return false;
-  }
 
   try {
 
     const datos =
-    new TextEncoder().encode(texto);
+      new TextEncoder().encode(texto);
 
     await characteristic.writeValue(datos);
 
@@ -198,10 +173,18 @@ async function enviar(texto) {
   catch(error) {
 
     document.getElementById("status").innerText =
-    "❌ BLE: " + error;
+      "❌ BLE: " + error;
 
     return false;
   }
+}
+
+
+function esperar(ms) {
+
+  return new Promise(resolve =>
+    setTimeout(resolve, ms)
+  );
 }
 
 
@@ -214,13 +197,13 @@ function iniciarGPS() {
   if (!navigator.geolocation) {
 
     document.getElementById("gpsdata").innerText =
-    "Este navegador no permite GPS";
+      "GPS no disponible";
 
     return;
   }
 
   document.getElementById("gpsdata").innerText =
-  "Buscando posición...";
+    "Buscando posición...";
 
   navigator.geolocation.watchPosition(
     actualizarGPS,
@@ -239,14 +222,8 @@ async function actualizarGPS(pos) {
   latActual = pos.coords.latitude;
   lonActual = pos.coords.longitude;
 
-  const lat =
-  latActual.toFixed(6);
-
-  const lon =
-  lonActual.toFixed(6);
-
   const precision =
-  Math.round(pos.coords.accuracy);
+    Math.round(pos.coords.accuracy);
 
   let velocidad = 0;
 
@@ -256,40 +233,46 @@ async function actualizarGPS(pos) {
   ) {
 
     velocidad =
-    Math.round(pos.coords.speed * 3.6);
+      Math.round(pos.coords.speed * 3.6);
   }
 
 
   document.getElementById("gpsdata").innerHTML =
 
-  "📍 Latitud: " + lat +
+    "📍 " +
+    latActual.toFixed(6) +
+    ", " +
+    lonActual.toFixed(6) +
 
-  "<br>📍 Longitud: " + lon +
+    "<br>🎯 Precisión: " +
+    precision +
+    " m" +
 
-  "<br>🎯 Precisión: " + precision + " m" +
+    "<br>🏍️ Velocidad: " +
+    velocidad +
+    " km/h";
 
-  "<br>🏍️ Velocidad: " + velocidad + " km/h";
 
-
-  /* =========================
-     ENVIAR VELOCIDAD
-  ========================= */
+  /* VELOCIDAD AL ESP32 */
 
   if (
     characteristic &&
     velocidad !== ultimaVelocidadEnviada
   ) {
 
-    const enviado =
-    await enviar(
-      "V:" + velocidad
-    );
-
-    if (enviado) {
+    if (await enviar("V:" + velocidad)) {
 
       ultimaVelocidadEnviada =
-      velocidad;
+        velocidad;
     }
+  }
+
+
+  /* ACTUALIZAR NAVEGACIÓN */
+
+  if (navegando) {
+
+    await actualizarNavegacion();
   }
 }
 
@@ -297,7 +280,7 @@ async function actualizarGPS(pos) {
 function errorGPS(error) {
 
   document.getElementById("gpsdata").innerText =
-  "❌ Error GPS: " + error.message;
+    "❌ GPS: " + error.message;
 }
 
 
@@ -308,20 +291,21 @@ function errorGPS(error) {
 async function buscarDestino(texto) {
 
   const url =
-  "https://nominatim.openstreetmap.org/search" +
-  "?format=json" +
-  "&limit=1" +
-  "&countrycodes=es" +
-  "&q=" +
-  encodeURIComponent(texto);
+
+    "https://nominatim.openstreetmap.org/search" +
+    "?format=json" +
+    "&limit=1" +
+    "&countrycodes=es" +
+    "&q=" +
+    encodeURIComponent(texto);
 
   const respuesta =
-  await fetch(url);
+    await fetch(url);
 
   const datos =
-  await respuesta.json();
+    await respuesta.json();
 
-  if (datos.length === 0) {
+  if (!datos.length) {
 
     throw new Error(
       "Destino no encontrado"
@@ -340,49 +324,13 @@ async function buscarDestino(texto) {
 
 
 /* =========================
-   CONVERTIR MANIOBRA
-========================= */
-
-function convertirManiobra(paso) {
-
-  const tipo =
-  paso.maneuver.type || "";
-
-  const modificador =
-  paso.maneuver.modifier || "";
-
-  if (modificador.includes("uturn")) {
-    return "T:UTURN";
-  }
-
-  if (modificador.includes("right")) {
-    return "T:RIGHT";
-  }
-
-  if (modificador.includes("left")) {
-    return "T:LEFT";
-  }
-
-  if (
-    modificador.includes("straight") ||
-    tipo === "continue" ||
-    tipo === "depart"
-  ) {
-    return "T:STRAIGHT";
-  }
-
-  return "T:STRAIGHT";
-}
-
-
-/* =========================
    CALCULAR RUTA
 ========================= */
 
 async function calcularRuta() {
 
   const salida =
-  document.getElementById("rutadata");
+    document.getElementById("navdata");
 
   try {
 
@@ -392,59 +340,63 @@ async function calcularRuta() {
     ) {
 
       salida.innerHTML =
-      "❌ Primero activa el GPS";
+        "❌ Primero activa el GPS";
 
       return;
     }
 
+
     const texto =
-    document
-    .getElementById("destino")
-    .value
-    .trim();
+      document
+      .getElementById("destino")
+      .value
+      .trim();
 
     if (!texto) {
 
       salida.innerHTML =
-      "❌ Escribe un destino";
+        "❌ Escribe un destino";
 
       return;
     }
 
+
     salida.innerHTML =
-    "🔎 Buscando destino...";
+      "🔎 Buscando destino...";
+
 
     const destino =
-    await buscarDestino(texto);
+      await buscarDestino(texto);
+
 
     salida.innerHTML =
-    "🗺️ Calculando ruta...";
+      "🗺️ Calculando ruta...";
 
 
     const url =
 
-    "https://router.project-osrm.org/route/v1/driving/" +
+      "https://router.project-osrm.org/route/v1/driving/" +
 
-    lonActual + "," +
-    latActual + ";" +
+      lonActual + "," +
+      latActual + ";" +
 
-    destino.lon + "," +
-    destino.lat +
+      destino.lon + "," +
+      destino.lat +
 
-    "?overview=false&steps=true";
+      "?overview=false&steps=true";
 
 
     const respuesta =
-    await fetch(url);
+      await fetch(url);
 
     const datos =
-    await respuesta.json();
+      await respuesta.json();
 
 
     if (
       datos.code !== "Ok" ||
       !datos.routes ||
-      datos.routes.length === 0
+      !datos.routes.length
     ) {
 
       throw new Error(
@@ -453,154 +405,276 @@ async function calcularRuta() {
     }
 
 
-    const ruta =
-    datos.routes[0];
-
-    const pasos =
-    ruta.legs[0].steps;
+    pasosRuta =
+      datos.routes[0].legs[0].steps;
 
 
-    let html = "";
+    indicePaso = 0;
 
-    html +=
-    "<b>Destino:</b><br>" +
-    destino.nombre +
-    "<br><br>";
+    navegando = true;
 
-    html +=
-    "<b>Distancia total:</b> " +
-    (ruta.distance / 1000).toFixed(1) +
-    " km<br>";
-
-    html +=
-    "<b>Tiempo aproximado:</b> " +
-    Math.round(ruta.duration / 60) +
-    " min";
-
-    html += "<hr>";
-
-    html +=
-    "<b>Primeras maniobras:</b><br><br>";
+    ultimaDistanciaEnviada = null;
 
 
-    pasos.slice(0, 8).forEach(
-      function(paso, indice) {
+    await enviarPasoActual();
 
-        const tipo =
-        paso.maneuver.type;
-
-        const modificador =
-        paso.maneuver.modifier || "";
-
-        const calle =
-        paso.name || "Sin nombre";
-
-        const distancia =
-        Math.round(paso.distance);
-
-        html +=
-
-        (indice + 1) +
-        ". <b>" +
-
-        tipo +
-        " " +
-        modificador +
-
-        "</b><br>" +
-
-        calle +
-
-        "<br>" +
-
-        distancia +
-        " m<br><br>";
-      }
-    );
-
-
-    /* =========================
-       ENVIAR MANIOBRA,
-       DISTANCIA Y CALLE
-    ========================= */
-
-    if (pasos.length > 0 && characteristic) {
-
-      const primerPaso =
-      pasos[0];
-
-      const comando =
-      convertirManiobra(primerPaso);
-
-      const distancia =
-      Math.round(primerPaso.distance);
-
-      const calle =
-      primerPaso.name || "Sin nombre";
-
-
-      await enviar(comando);
-
-      await esperar(150);
-
-
-      await enviar(
-        "D:" + distancia + " m"
-      );
-
-      await esperar(150);
-
-
-      await enviar(
-        "C:" + calle
-      );
-
-
-      html += "<hr>";
-
-      html +=
-      "📡 <b>Enviado a MotoGPS:</b><br>";
-
-      html +=
-      comando + "<br>";
-
-      html +=
-      "D:" + distancia + " m<br>";
-
-      html +=
-      "C:" + calle;
-    }
-
-    else if (!characteristic) {
-
-      html +=
-      "<hr>⚠️ MotoGPS no conectado";
-    }
-
-
-    salida.innerHTML =
-    html;
+    await actualizarNavegacion();
 
   }
 
   catch(error) {
 
     salida.innerHTML =
-    "❌ " + error.message;
+      "❌ " + error.message;
   }
 }
 
 
 /* =========================
-   PAUSA BLE
+   MANIOBRA → COMANDO
 ========================= */
 
-function esperar(ms) {
+function convertirManiobra(paso) {
 
-  return new Promise(
-    resolve =>
-    setTimeout(resolve, ms)
+  const tipo =
+    paso.maneuver.type || "";
+
+  const modificador =
+    paso.maneuver.modifier || "";
+
+
+  if (modificador.includes("uturn"))
+    return "T:UTURN";
+
+  if (modificador.includes("right"))
+    return "T:RIGHT";
+
+  if (modificador.includes("left"))
+    return "T:LEFT";
+
+  if (
+    modificador.includes("straight") ||
+    tipo === "continue" ||
+    tipo === "depart"
+  )
+    return "T:STRAIGHT";
+
+
+  return "T:STRAIGHT";
+}
+
+
+/* =========================
+   ENVIAR PASO ACTUAL
+========================= */
+
+async function enviarPasoActual() {
+
+  if (
+    !pasosRuta.length ||
+    indicePaso >= pasosRuta.length
+  )
+    return;
+
+
+  const paso =
+    pasosRuta[indicePaso];
+
+
+  const comando =
+    convertirManiobra(paso);
+
+
+  const calle =
+    paso.name || "Sin nombre";
+
+
+  await enviar(comando);
+
+  await esperar(120);
+
+  await enviar(
+    "C:" + calle
   );
+
+  ultimaDistanciaEnviada = null;
+}
+
+
+/* =========================
+   NAVEGACIÓN EN TIEMPO REAL
+========================= */
+
+async function actualizarNavegacion() {
+
+  if (
+    !navegando ||
+    indicePaso >= pasosRuta.length
+  )
+    return;
+
+
+  const paso =
+    pasosRuta[indicePaso];
+
+
+  const coordenadas =
+    paso.maneuver.location;
+
+
+  const lonManiobra =
+    coordenadas[0];
+
+  const latManiobra =
+    coordenadas[1];
+
+
+  const distancia =
+    distanciaMetros(
+      latActual,
+      lonActual,
+      latManiobra,
+      lonManiobra
+    );
+
+
+  const distanciaRedondeada =
+    Math.round(distancia);
+
+
+  /* Actualizar pantalla web */
+
+  document.getElementById("navdata").innerHTML =
+
+    "🧭 <b>MANIOBRA " +
+    (indicePaso + 1) +
+    " / " +
+    pasosRuta.length +
+    "</b><br><br>" +
+
+    convertirManiobra(paso) +
+
+    "<br>" +
+
+    (paso.name || "Sin nombre") +
+
+    "<br><br>" +
+
+    "📏 <b>" +
+    distanciaRedondeada +
+    " m</b>";
+
+
+  /* ENVIAR DISTANCIA */
+
+  if (
+    characteristic &&
+    (
+      ultimaDistanciaEnviada === null ||
+      Math.abs(
+        distanciaRedondeada -
+        ultimaDistanciaEnviada
+      ) >= 3
+    )
+  ) {
+
+    if (
+      await enviar(
+        "D:" +
+        distanciaRedondeada +
+        " m"
+      )
+    ) {
+
+      ultimaDistanciaEnviada =
+        distanciaRedondeada;
+    }
+  }
+
+
+  /* =========================
+     PASAR A SIGUIENTE PASO
+     
+     Primera versión:
+     consideramos realizada la
+     maniobra al estar a <= 18 m
+  ========================= */
+
+  if (distancia <= 18) {
+
+    indicePaso++;
+
+    ultimaDistanciaEnviada = null;
+
+
+    if (
+      indicePaso >= pasosRuta.length
+    ) {
+
+      navegando = false;
+
+      document.getElementById("navdata").innerHTML =
+        "🏁 <b>Destino alcanzado</b>";
+
+      await enviar("D:0 m");
+
+      return;
+    }
+
+
+    await esperar(150);
+
+    await enviarPasoActual();
+  }
+}
+
+
+/* =========================
+   DISTANCIA GPS
+   Fórmula Haversine
+========================= */
+
+function distanciaMetros(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+
+  const R = 6371000;
+
+  const rad =
+    Math.PI / 180;
+
+
+  const dLat =
+    (lat2 - lat1) * rad;
+
+  const dLon =
+    (lon2 - lon1) * rad;
+
+
+  const a =
+
+    Math.sin(dLat / 2) *
+    Math.sin(dLat / 2) +
+
+    Math.cos(lat1 * rad) *
+    Math.cos(lat2 * rad) *
+
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
+
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    );
+
+
+  return R * c;
 }
 
 </script>
