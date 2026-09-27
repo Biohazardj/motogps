@@ -104,6 +104,13 @@ let pasosRuta = [];
 let indicePaso = 0;
 let navegando = false;
 
+/*
+  NUEVO:
+  guardamos la menor distancia
+  alcanzada a la maniobra actual.
+*/
+let distanciaMinimaPaso = Infinity;
+
 
 /* =========================
    BLUETOOTH
@@ -303,9 +310,7 @@ async function buscarDestino(texto) {
   return {
 
     lat: parseFloat(datos[0].lat),
-
     lon: parseFloat(datos[0].lon),
-
     nombre: datos[0].display_name
   };
 }
@@ -402,6 +407,8 @@ async function calcularRuta() {
 
     ultimaDistanciaEnviada = null;
 
+    distanciaMinimaPaso = Infinity;
+
 
     await enviarPasoActual();
 
@@ -484,7 +491,7 @@ async function enviarPasoActual() {
 
 
 /* =========================
-   PINTAR MANIOBRA WEB
+   MOSTRAR PASO
 ========================= */
 
 function mostrarPasoActual(distancia) {
@@ -522,6 +529,88 @@ function mostrarPasoActual(distancia) {
 
 
 /* =========================
+   CAMBIAR AL SIGUIENTE PASO
+========================= */
+
+async function siguientePaso() {
+
+  indicePaso++;
+
+  ultimaDistanciaEnviada = null;
+
+  /*
+    MUY IMPORTANTE:
+    reiniciamos la distancia mínima
+    para la nueva maniobra.
+  */
+  distanciaMinimaPaso = Infinity;
+
+
+  if (
+    indicePaso >= pasosRuta.length
+  ) {
+
+    navegando = false;
+
+    document.getElementById("navdata").innerHTML =
+      "🏁 <b>Destino alcanzado</b>";
+
+    await enviar("D:0 m");
+
+    return;
+  }
+
+
+  await esperar(120);
+
+  await enviarPasoActual();
+
+
+  /*
+    Pintamos inmediatamente
+    la siguiente maniobra.
+  */
+
+  const nuevoPaso =
+    pasosRuta[indicePaso];
+
+  const nuevaLon =
+    nuevoPaso.maneuver.location[0];
+
+  const nuevaLat =
+    nuevoPaso.maneuver.location[1];
+
+
+  const nuevaDistancia =
+    distanciaMetros(
+      latActual,
+      lonActual,
+      nuevaLat,
+      nuevaLon
+    );
+
+
+  mostrarPasoActual(
+    nuevaDistancia
+  );
+
+
+  const d =
+    Math.round(nuevaDistancia);
+
+
+  if (
+    await enviar(
+      "D:" + d + " m"
+    )
+  ) {
+
+    ultimaDistanciaEnviada = d;
+  }
+}
+
+
+/* =========================
    NAVEGACIÓN
 ========================= */
 
@@ -538,15 +627,11 @@ async function actualizarNavegacion() {
     pasosRuta[indicePaso];
 
 
-  const coordenadas =
-    paso.maneuver.location;
-
-
   const lonManiobra =
-    coordenadas[0];
+    paso.maneuver.location[0];
 
   const latManiobra =
-    coordenadas[1];
+    paso.maneuver.location[1];
 
 
   const distancia =
@@ -565,6 +650,21 @@ async function actualizarNavegacion() {
   mostrarPasoActual(
     distanciaRedondeada
   );
+
+
+  /*
+    GUARDAMOS LA DISTANCIA MÁS
+    CERCANA QUE HEMOS ALCANZADO.
+  */
+
+  if (
+    distancia <
+    distanciaMinimaPaso
+  ) {
+
+    distanciaMinimaPaso =
+      distancia;
+  }
 
 
   /* ENVIAR DISTANCIA */
@@ -594,85 +694,43 @@ async function actualizarNavegacion() {
   }
 
 
-  /* =========================
-     CAMBIO DE MANIOBRA
-  ========================= */
+  /*
+    ============================
+    DETECCIÓN DE MANIOBRA PASADA
+    ============================
 
-  if (distancia <= 18) {
+    CASO 1:
+    estamos a 15 m o menos.
 
-    indicePaso++;
+    CASO 2:
+    hemos llegado al menos a
+    35 m del giro y después nos
+    hemos alejado 15 m respecto
+    al punto más cercano.
 
-    ultimaDistanciaEnviada = null;
+    Esto evita quedarnos atascados
+    si el GPS no entra exactamente
+    en el radio pequeño.
+  */
 
-
-    if (
-      indicePaso >= pasosRuta.length
-    ) {
-
-      navegando = false;
-
-      document.getElementById("navdata").innerHTML =
-        "🏁 <b>Destino alcanzado</b>";
-
-      await enviar("D:0 m");
-
-      return;
-    }
+  const muyCerca =
+    distancia <= 15;
 
 
-    await esperar(120);
+  const hemosPasado =
 
-    await enviarPasoActual();
+    distanciaMinimaPaso <= 35 &&
 
-
-    /*
-      IMPORTANTE:
-      calculamos inmediatamente
-      la distancia al NUEVO paso
-      y actualizamos tanto web
-      como ESP32.
-    */
-
-    const nuevoPaso =
-      pasosRuta[indicePaso];
+    distancia >
+    distanciaMinimaPaso + 15;
 
 
-    const nuevaLon =
-      nuevoPaso.maneuver.location[0];
+  if (
+    muyCerca ||
+    hemosPasado
+  ) {
 
-    const nuevaLat =
-      nuevoPaso.maneuver.location[1];
-
-
-    const nuevaDistancia =
-      distanciaMetros(
-        latActual,
-        lonActual,
-        nuevaLat,
-        nuevaLon
-      );
-
-
-    mostrarPasoActual(
-      nuevaDistancia
-    );
-
-
-    const nuevaDistanciaRedondeada =
-      Math.round(nuevaDistancia);
-
-
-    if (
-      await enviar(
-        "D:" +
-        nuevaDistanciaRedondeada +
-        " m"
-      )
-    ) {
-
-      ultimaDistanciaEnviada =
-        nuevaDistanciaRedondeada;
-    }
+    await siguientePaso();
   }
 }
 
