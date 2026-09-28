@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>MotoGPS v16</title>
+<title>MotoGPS v16.1</title>
 
 <style>
 body {
@@ -69,7 +69,7 @@ button {
 
 <body>
 
-<h1>🏍️ MotoGPS v16</h1>
+<h1>🏍️ MotoGPS v16.1</h1>
 
 <button id="connect" onclick="conectar()">
 CONECTAR MOTOGPS
@@ -146,22 +146,14 @@ let lonActual = null;
 let velocidadActual = 0;
 let precisionActual = null;
 
-/*
-   V16:
-   posición anterior para calcular
-   velocidad aunque coords.speed
-   no funcione.
-*/
+/* V16.1 */
 
 let latAnterior = null;
 let lonAnterior = null;
 let tiempoAnterior = null;
 
-let velocidadCalculada = 0;
-let fuenteVelocidad = "SIN DATOS";
-
 let contadorGPS = 0;
-let ultimaActualizacionGPS = null;
+let fuenteVelocidad = "Sin datos";
 
 
 /* ======================================
@@ -208,10 +200,10 @@ const TIEMPO_ENTRE_RECALCULOS = 10000;
 
 async function conectar() {
 
-  try {
+  document.getElementById("status").innerText =
+    "Buscando MotoGPS...";
 
-    document.getElementById("status").innerText =
-      "Buscando MotoGPS...";
+  try {
 
     const device =
       await navigator.bluetooth.requestDevice({
@@ -273,9 +265,9 @@ async function enviar(texto) {
 
 function esperar(ms) {
 
-  return new Promise(resolve =>
-    setTimeout(resolve, ms)
-  );
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms);
+  });
 }
 
 
@@ -301,28 +293,18 @@ function activarGPS() {
     navigator.geolocation.clearWatch(watchId);
   }
 
-  /*
-     Reiniciamos datos del cálculo
-     de velocidad.
-  */
-
   latAnterior = null;
   lonAnterior = null;
   tiempoAnterior = null;
 
-  velocidadCalculada = 0;
-  velocidadActual = 0;
-
   contadorGPS = 0;
-  ultimaActualizacionGPS = null;
+  velocidadActual = 0;
+  fuenteVelocidad = "Sin datos";
 
   watchId =
     navigator.geolocation.watchPosition(
-
       recibirPosicion,
-
       errorGPS,
-
       {
         enableHighAccuracy: true,
         maximumAge: 0,
@@ -352,29 +334,40 @@ async function recibirPosicion(pos) {
 
   contadorGPS++;
 
-  ultimaActualizacionGPS =
-    ahora;
+
+  /*
+     Primero intentamos usar
+     la velocidad nativa del iPhone.
+  */
+
+  let velocidadNativa = null;
+
+  if (
+    pos.coords.speed !== null &&
+    Number.isFinite(pos.coords.speed) &&
+    pos.coords.speed > 0
+  ) {
+
+    velocidadNativa =
+      pos.coords.speed * 3.6;
+  }
 
 
   /*
-     ==================================
-     V16 - VELOCIDAD CALCULADA
-     ==================================
-
-     Calculamos la velocidad mediante:
-
-     distancia GPS / tiempo transcurrido
+     Si iPhone no da velocidad,
+     la calculamos entre dos
+     posiciones GPS consecutivas.
   */
 
-  velocidadCalculada = 0;
+  let velocidadPorPosicion = null;
 
   if (
     Number.isFinite(latAnterior) &&
     Number.isFinite(lonAnterior) &&
-    Number.isFinite(tiempoAnterior)
+    tiempoAnterior !== null
   ) {
 
-    const distanciaRecorrida =
+    const distancia =
       distanciaMetros(
         latAnterior,
         lonAnterior,
@@ -386,90 +379,66 @@ async function recibirPosicion(pos) {
       (ahora - tiempoAnterior) / 1000;
 
     if (
-      Number.isFinite(distanciaRecorrida) &&
-      segundos > 0
+      Number.isFinite(distancia) &&
+      segundos >= 0.5
     ) {
 
-      velocidadCalculada =
-        (distanciaRecorrida / segundos) *
-        3.6;
+      velocidadPorPosicion =
+        (distancia / segundos) * 3.6;
     }
   }
 
 
   /*
-     Primero actualizamos posición.
-  */
-
-  latActual = nuevaLat;
-  lonActual = nuevaLon;
-
-
-  /*
-     ==================================
-     ELEGIR VELOCIDAD
-     ==================================
-
-     Si iOS entrega coords.speed
-     válido y mayor que cero,
-     lo utilizamos.
-
-     Si no, utilizamos nuestra
-     velocidad calculada.
+     Elegimos velocidad.
   */
 
   if (
-    pos.coords.speed !== null &&
-    Number.isFinite(pos.coords.speed) &&
-    pos.coords.speed > 0
+    velocidadNativa !== null &&
+    velocidadNativa <= 200
   ) {
 
     velocidadActual =
-      Math.max(
-        0,
-        Math.round(
-          pos.coords.speed * 3.6
-        )
-      );
+      Math.round(velocidadNativa);
 
     fuenteVelocidad =
       "iPhone";
 
-  } else {
+  } else if (
+    velocidadPorPosicion !== null &&
+    velocidadPorPosicion >= 0 &&
+    velocidadPorPosicion <= 200
+  ) {
 
-    /*
-       Evitamos mostrar velocidades
-       absurdas producidas por un salto
-       grande de GPS.
-
-       200 km/h es simplemente un
-       filtro de seguridad.
-    */
-
-    if (
-      Number.isFinite(velocidadCalculada) &&
-      velocidadCalculada >= 0 &&
-      velocidadCalculada <= 200
-    ) {
-
-      velocidadActual =
-        Math.round(
-          velocidadCalculada
-        );
-
-    } else {
-
-      velocidadActual = 0;
-    }
+    velocidadActual =
+      Math.round(velocidadPorPosicion);
 
     fuenteVelocidad =
       "Calculada";
+
+  } else {
+
+    velocidadActual = 0;
+
+    fuenteVelocidad =
+      "Sin velocidad";
   }
 
 
   /*
-     Guardamos esta posición para
-     la siguiente actualización.
+     Actualizamos posición actual.
+  */
+
+  latActual =
+    nuevaLat;
+
+  lonActual =
+    nuevaLon;
+
+
+  /*
+     Guardamos posición y hora
+     para la siguiente lectura.
   */
 
   latAnterior =
@@ -481,10 +450,6 @@ async function recibirPosicion(pos) {
   tiempoAnterior =
     ahora;
 
-
-  /*
-     INFORMACIÓN GPS
-  */
 
   document.getElementById("gpsdata").innerHTML =
 
@@ -504,18 +469,17 @@ async function recibirPosicion(pos) {
     velocidadActual +
     " km/h" +
 
-    "<br>Fuente velocidad: " +
+    "<br>Fuente: " +
     fuenteVelocidad +
 
     "<br>Actualizaciones GPS: " +
-    contadorGPS +
-
-    "<br>Última actualización: AHORA";
+    contadorGPS;
 
 
   /*
-     Seguimiento de navegación:
-     misma estructura que V13/V15.
+     Igual que V13:
+     cada nueva posición actualiza
+     la navegación.
   */
 
   if (
@@ -713,10 +677,6 @@ async function generarRuta(esRecalculo) {
 
   construirIndiceManiobras();
 
-  /*
-     Seguimiento V13.
-  */
-
   indiceRutaActual = 0;
 
   indiceManiobra = 0;
@@ -774,6 +734,314 @@ async function generarRuta(esRecalculo) {
 
     puntosRuta.length;
 
-  /*
-     Igual que V13.
-  */
+  localizarEnRuta();
+
+  actualizarPantallaWeb();
+}
+
+
+/* ======================================
+   DENSIFICAR GEOMETRÍA
+====================================== */
+
+function densificarGeometria(
+  geometria,
+  separacion
+) {
+
+  const resultado = [];
+
+  for (
+    let i = 0;
+    i < geometria.length - 1;
+    i++
+  ) {
+
+    const a = geometria[i];
+    const b = geometria[i + 1];
+
+    resultado.push(a);
+
+    const d =
+      distanciaMetros(
+        a[1],
+        a[0],
+        b[1],
+        b[0]
+      );
+
+    if (!Number.isFinite(d))
+      continue;
+
+    const partes =
+      Math.max(
+        1,
+        Math.ceil(
+          d / separacion
+        )
+      );
+
+    for (
+      let j = 1;
+      j < partes;
+      j++
+    ) {
+
+      const t =
+        j / partes;
+
+      resultado.push([
+
+        a[0] +
+        (b[0] - a[0]) * t,
+
+        a[1] +
+        (b[1] - a[1]) * t
+
+      ]);
+    }
+  }
+
+  if (geometria.length) {
+
+    resultado.push(
+      geometria[
+        geometria.length - 1
+      ]
+    );
+  }
+
+  return resultado;
+}
+
+
+/* ======================================
+   ASOCIAR MANIOBRAS A RUTA
+====================================== */
+
+function construirIndiceManiobras() {
+
+  maniobras = [];
+
+  let indiceBusqueda = 0;
+
+  for (
+    let p = 0;
+    p < pasosRuta.length;
+    p++
+  ) {
+
+    const paso =
+      pasosRuta[p];
+
+    const lon =
+      paso.maneuver.location[0];
+
+    const lat =
+      paso.maneuver.location[1];
+
+    let mejorIndice =
+      indiceBusqueda;
+
+    let mejorDistancia =
+      Infinity;
+
+    for (
+      let i = indiceBusqueda;
+      i < puntosRuta.length;
+      i++
+    ) {
+
+      const punto =
+        puntosRuta[i];
+
+      const d =
+        distanciaMetros(
+          lat,
+          lon,
+          punto[1],
+          punto[0]
+        );
+
+      if (
+        Number.isFinite(d) &&
+        d < mejorDistancia
+      ) {
+
+        mejorDistancia = d;
+        mejorIndice = i;
+      }
+
+      if (mejorDistancia < 2)
+        break;
+    }
+
+    maniobras.push({
+
+      paso: paso,
+
+      indicePunto:
+        mejorIndice,
+
+      error:
+        mejorDistancia
+    });
+
+    indiceBusqueda =
+      mejorIndice;
+  }
+}
+
+
+/* ======================================
+   LOCALIZAR GPS EN LA RUTA
+   LÓGICA V13
+====================================== */
+
+function localizarEnRuta() {
+
+  if (
+    !puntosRuta.length ||
+    !Number.isFinite(latActual) ||
+    !Number.isFinite(lonActual)
+  ) {
+
+    return null;
+  }
+
+  let inicio =
+    Math.max(
+      0,
+      indiceRutaActual - 40
+    );
+
+  let fin =
+    Math.min(
+      puntosRuta.length - 1,
+      indiceRutaActual + 300
+    );
+
+  if (indiceRutaActual === 0) {
+
+    inicio = 0;
+    fin = puntosRuta.length - 1;
+  }
+
+  let mejorIndice =
+    indiceRutaActual;
+
+  let mejorDistancia =
+    Infinity;
+
+  for (
+    let i = inicio;
+    i <= fin;
+    i++
+  ) {
+
+    const punto =
+      puntosRuta[i];
+
+    const d =
+      distanciaMetros(
+        latActual,
+        lonActual,
+        punto[1],
+        punto[0]
+      );
+
+    if (
+      Number.isFinite(d) &&
+      d < mejorDistancia
+    ) {
+
+      mejorDistancia = d;
+      mejorIndice = i;
+    }
+  }
+
+  if (
+    mejorIndice >=
+    indiceRutaActual - 8
+  ) {
+
+    indiceRutaActual =
+      Math.max(
+        0,
+        mejorIndice
+      );
+  }
+
+  return {
+    indice:
+      indiceRutaActual,
+
+    distancia:
+      mejorDistancia
+  };
+}
+
+
+/* ======================================
+   SIGUIENTE MANIOBRA
+====================================== */
+
+function actualizarIndiceManiobra() {
+
+  while (
+    indiceManiobra <
+      maniobras.length - 1 &&
+
+    indiceRutaActual >=
+      maniobras[
+        indiceManiobra
+      ].indicePunto
+  ) {
+
+    indiceManiobra++;
+  }
+}
+
+
+/* ======================================
+   DISTANCIA POR RUTA
+   LÓGICA V13
+====================================== */
+
+function distanciaHastaManiobra(
+  desde,
+  hasta
+) {
+
+  if (
+    desde < 0 ||
+    hasta < 0 ||
+    desde >= puntosRuta.length ||
+    hasta >= puntosRuta.length
+  ) {
+
+    return 0;
+  }
+
+  if (hasta <= desde)
+    return 0;
+
+  let total = 0;
+
+  for (
+    let i = desde;
+    i < hasta;
+    i++
+  ) {
+
+    const a =
+      puntosRuta[i];
+
+    const b =
+      puntosRuta[i + 1];
+
+    if (!a || !b)
+      continue;
+
+    const d =
+      distancia
