@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>MotoGPS GPS real</title>
+<title>MotoGPS V13.1</title>
 
 <style>
 body {
@@ -69,7 +69,7 @@ button {
 
 <body>
 
-<h1>🏍️ MotoGPS</h1>
+<h1>🏍️ MotoGPS V13.1</h1>
 
 <button id="connect" onclick="conectar()">
 CONECTAR MOTOGPS
@@ -145,6 +145,19 @@ let latActual = null;
 let lonActual = null;
 let velocidadActual = 0;
 let precisionActual = null;
+
+
+/* ======================================
+   V13.1 - DIAGNÓSTICO GPS
+====================================== */
+
+let latAnterior = null;
+let lonAnterior = null;
+let tiempoAnterior = null;
+
+let contadorGPS = 0;
+let velocidadCalculada = 0;
+let fuenteVelocidad = "Sin datos";
 
 
 /* ======================================
@@ -267,6 +280,20 @@ function activarGPS() {
   }
 
 
+  /*
+    Reiniciamos únicamente los datos
+    utilizados para calcular velocidad.
+  */
+
+  latAnterior = null;
+  lonAnterior = null;
+  tiempoAnterior = null;
+
+  contadorGPS = 0;
+  velocidadCalculada = 0;
+  fuenteVelocidad = "Sin datos";
+
+
   watchId =
     navigator.geolocation.watchPosition(
 
@@ -289,19 +316,79 @@ function activarGPS() {
 
 async function recibirPosicion(pos) {
 
-  latActual =
+  const nuevaLat =
     pos.coords.latitude;
 
-  lonActual =
+  const nuevaLon =
     pos.coords.longitude;
+
+  const ahora =
+    Date.now();
+
+
+  contadorGPS++;
+
+
+  latActual =
+    nuevaLat;
+
+  lonActual =
+    nuevaLon;
 
   precisionActual =
     pos.coords.accuracy;
 
 
+  /*
+    Calculamos la velocidad entre
+    dos posiciones GPS consecutivas.
+  */
+
+  velocidadCalculada = 0;
+
+
+  if (
+    Number.isFinite(latAnterior) &&
+    Number.isFinite(lonAnterior) &&
+    tiempoAnterior !== null
+  ) {
+
+    const distancia =
+      distanciaMetros(
+        latAnterior,
+        lonAnterior,
+        nuevaLat,
+        nuevaLon
+      );
+
+
+    const segundos =
+      (ahora - tiempoAnterior) / 1000;
+
+
+    if (
+      Number.isFinite(distancia) &&
+      segundos > 0
+    ) {
+
+      velocidadCalculada =
+        (distancia / segundos) * 3.6;
+    }
+  }
+
+
+  /*
+    Si el iPhone proporciona velocidad
+    real y es mayor de cero, usamos esa.
+
+    Si no, utilizamos la velocidad
+    calculada entre posiciones GPS.
+  */
+
   if (
     pos.coords.speed !== null &&
-    Number.isFinite(pos.coords.speed)
+    Number.isFinite(pos.coords.speed) &&
+    pos.coords.speed > 0
   ) {
 
     velocidadActual =
@@ -312,10 +399,45 @@ async function recibirPosicion(pos) {
         )
       );
 
+    fuenteVelocidad =
+      "iPhone";
+
+  } else if (
+    Number.isFinite(velocidadCalculada) &&
+    velocidadCalculada >= 0 &&
+    velocidadCalculada <= 200
+  ) {
+
+    velocidadActual =
+      Math.round(
+        velocidadCalculada
+      );
+
+    fuenteVelocidad =
+      "Calculada";
+
   } else {
 
     velocidadActual = 0;
+
+    fuenteVelocidad =
+      "Sin datos";
   }
+
+
+  /*
+    Guardamos esta posición para
+    la siguiente lectura GPS.
+  */
+
+  latAnterior =
+    nuevaLat;
+
+  lonAnterior =
+    nuevaLon;
+
+  tiempoAnterior =
+    ahora;
 
 
   document.getElementById("gpsdata").innerHTML =
@@ -334,13 +456,18 @@ async function recibirPosicion(pos) {
 
     "<br>Velocidad: " +
     velocidadActual +
-    " km/h";
+    " km/h" +
+
+    "<br>Fuente velocidad: " +
+    fuenteVelocidad +
+
+    "<br>Actualizaciones GPS: " +
+    contadorGPS;
 
 
   /*
-    Si estamos navegando,
-    cada nueva posición GPS
-    actualiza la navegación.
+    La navegación permanece igual
+    que en V13.
   */
 
   if (navegando) {
@@ -587,12 +714,6 @@ async function calcularRuta() {
       puntosRuta.length;
 
 
-    /*
-      Buscamos inmediatamente
-      nuestra posición dentro
-      de la ruta.
-    */
-
     localizarEnRuta();
 
     actualizarPantallaWeb();
@@ -794,15 +915,6 @@ function localizarEnRuta() {
   }
 
 
-  /*
-    Buscamos alrededor de la posición
-    anterior de la ruta.
-
-    Permitimos mirar bastante hacia
-    delante y algo hacia atrás para
-    absorber saltos del GPS.
-  */
-
   let inicio =
     Math.max(
       0,
@@ -816,11 +928,6 @@ function localizarEnRuta() {
       indiceRutaActual + 300
     );
 
-
-  /*
-    En la primera localización
-    buscamos toda la ruta.
-  */
 
   if (indiceRutaActual === 0) {
 
@@ -865,11 +972,6 @@ function localizarEnRuta() {
     }
   }
 
-
-  /*
-    No permitimos retrocesos grandes
-    provocados por ruido del GPS.
-  */
 
   if (
     mejorIndice >=
@@ -1084,11 +1186,6 @@ async function actualizarNavegacionGPS() {
     "Sin nombre";
 
 
-  /*
-    Flecha y calle solamente
-    cuando cambia la maniobra.
-  */
-
   if (
     indiceManiobra !==
     ultimaManiobraEnviada
@@ -1106,11 +1203,6 @@ async function actualizarNavegacionGPS() {
       indiceManiobra;
   }
 
-
-  /*
-    Distancia: solo si cambia
-    al menos 5 metros.
-  */
 
   if (
     ultimaDistanciaEnviada === null ||
@@ -1132,10 +1224,6 @@ async function actualizarNavegacionGPS() {
       metros;
   }
 
-
-  /*
-    Velocidad.
-  */
 
   if (
     ultimaVelocidadEnviada === null ||
