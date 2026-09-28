@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>MotoGPS V13.1</title>
+<title>MotoGPS V13.2</title>
 
 <style>
 body {
@@ -69,7 +69,7 @@ button {
 
 <body>
 
-<h1>🏍️ MotoGPS V13.1</h1>
+<h1>🏍️ MotoGPS V13.2</h1>
 
 <button id="connect" onclick="conectar()">
 CONECTAR MOTOGPS
@@ -148,16 +148,29 @@ let precisionActual = null;
 
 
 /* ======================================
-   V13.1 - DIAGNÓSTICO GPS
+   V13.2 - DIAGNÓSTICO Y VELOCIDAD
 ====================================== */
-
-let latAnterior = null;
-let lonAnterior = null;
-let tiempoAnterior = null;
 
 let contadorGPS = 0;
 let velocidadCalculada = 0;
 let fuenteVelocidad = "Sin datos";
+
+/*
+  Punto de referencia para calcular
+  movimiento durante varios segundos.
+*/
+
+let latReferencia = null;
+let lonReferencia = null;
+let tiempoReferencia = null;
+let precisionReferencia = null;
+
+/*
+  Esperamos al menos 3 segundos antes
+  de calcular una nueva velocidad.
+*/
+
+const INTERVALO_VELOCIDAD = 3000;
 
 
 /* ======================================
@@ -280,18 +293,15 @@ function activarGPS() {
   }
 
 
-  /*
-    Reiniciamos únicamente los datos
-    utilizados para calcular velocidad.
-  */
-
-  latAnterior = null;
-  lonAnterior = null;
-  tiempoAnterior = null;
-
   contadorGPS = 0;
+  velocidadActual = 0;
   velocidadCalculada = 0;
   fuenteVelocidad = "Sin datos";
+
+  latReferencia = null;
+  lonReferencia = null;
+  tiempoReferencia = null;
+  precisionReferencia = null;
 
 
   watchId =
@@ -340,50 +350,13 @@ async function recibirPosicion(pos) {
 
 
   /*
-    Calculamos la velocidad entre
-    dos posiciones GPS consecutivas.
+    ------------------------------------------------
+    1. VELOCIDAD NATIVA DEL IPHONE
+    ------------------------------------------------
   */
 
-  velocidadCalculada = 0;
+  let velocidadIphone = null;
 
-
-  if (
-    Number.isFinite(latAnterior) &&
-    Number.isFinite(lonAnterior) &&
-    tiempoAnterior !== null
-  ) {
-
-    const distancia =
-      distanciaMetros(
-        latAnterior,
-        lonAnterior,
-        nuevaLat,
-        nuevaLon
-      );
-
-
-    const segundos =
-      (ahora - tiempoAnterior) / 1000;
-
-
-    if (
-      Number.isFinite(distancia) &&
-      segundos > 0
-    ) {
-
-      velocidadCalculada =
-        (distancia / segundos) * 3.6;
-    }
-  }
-
-
-  /*
-    Si el iPhone proporciona velocidad
-    real y es mayor de cero, usamos esa.
-
-    Si no, utilizamos la velocidad
-    calculada entre posiciones GPS.
-  */
 
   if (
     pos.coords.speed !== null &&
@@ -391,18 +364,181 @@ async function recibirPosicion(pos) {
     pos.coords.speed > 0
   ) {
 
+    velocidadIphone =
+      pos.coords.speed * 3.6;
+  }
+
+
+  /*
+    ------------------------------------------------
+    2. VELOCIDAD CALCULADA
+    ------------------------------------------------
+
+    No usamos dos posiciones consecutivas.
+
+    Conservamos una posición de referencia
+    durante varios segundos para que pequeños
+    saltos del GPS no parezcan movimiento.
+  */
+
+  if (
+    latReferencia === null ||
+    lonReferencia === null ||
+    tiempoReferencia === null
+  ) {
+
+    latReferencia =
+      nuevaLat;
+
+    lonReferencia =
+      nuevaLon;
+
+    tiempoReferencia =
+      ahora;
+
+    precisionReferencia =
+      precisionActual;
+
+    velocidadCalculada = 0;
+  }
+
+  else {
+
+    const tiempoTranscurrido =
+      ahora - tiempoReferencia;
+
+
+    if (
+      tiempoTranscurrido >=
+      INTERVALO_VELOCIDAD
+    ) {
+
+      const distancia =
+        distanciaMetros(
+
+          latReferencia,
+          lonReferencia,
+
+          nuevaLat,
+          nuevaLon
+        );
+
+
+      const segundos =
+        tiempoTranscurrido / 1000;
+
+
+      /*
+        Margen de ruido GPS.
+
+        Usamos la mejor de las dos precisiones
+        y exigimos además un mínimo de 8 metros.
+
+        Ejemplo:
+
+        precisión actual 24 m
+        referencia 20 m
+
+        margen = 20 m
+
+        Un salto menor no se interpreta
+        automáticamente como movimiento.
+      */
+
+      let margenRuido =
+        Math.min(
+          Number.isFinite(precisionReferencia)
+            ? precisionReferencia
+            : 999,
+
+          Number.isFinite(precisionActual)
+            ? precisionActual
+            : 999
+        );
+
+
+      if (!Number.isFinite(margenRuido)) {
+
+        margenRuido = 8;
+      }
+
+
+      margenRuido =
+        Math.max(
+          8,
+          margenRuido
+        );
+
+
+      /*
+        Si el desplazamiento no supera
+        claramente el margen GPS,
+        consideramos que seguimos parados.
+      */
+
+      if (
+        Number.isFinite(distancia) &&
+        distancia > margenRuido
+      ) {
+
+        velocidadCalculada =
+          (distancia / segundos) * 3.6;
+
+      } else {
+
+        velocidadCalculada = 0;
+      }
+
+
+      /*
+        Nueva referencia para el siguiente
+        periodo de cálculo.
+      */
+
+      latReferencia =
+        nuevaLat;
+
+      lonReferencia =
+        nuevaLon;
+
+      tiempoReferencia =
+        ahora;
+
+      precisionReferencia =
+        precisionActual;
+    }
+  }
+
+
+  /*
+    ------------------------------------------------
+    3. ELEGIR VELOCIDAD
+    ------------------------------------------------
+
+    Preferimos siempre la velocidad nativa
+    del iPhone si realmente existe.
+
+    Si Bluefy/iPhone no la proporciona,
+    utilizamos la calculada.
+  */
+
+  if (
+    velocidadIphone !== null &&
+    velocidadIphone >= 0 &&
+    velocidadIphone <= 200
+  ) {
+
     velocidadActual =
-      Math.max(
-        0,
-        Math.round(
-          pos.coords.speed * 3.6
-        )
+      Math.round(
+        velocidadIphone
       );
 
     fuenteVelocidad =
       "iPhone";
 
-  } else if (
+  }
+
+  else if (
     Number.isFinite(velocidadCalculada) &&
     velocidadCalculada >= 0 &&
     velocidadCalculada <= 200
@@ -416,7 +552,9 @@ async function recibirPosicion(pos) {
     fuenteVelocidad =
       "Calculada";
 
-  } else {
+  }
+
+  else {
 
     velocidadActual = 0;
 
@@ -426,19 +564,10 @@ async function recibirPosicion(pos) {
 
 
   /*
-    Guardamos esta posición para
-    la siguiente lectura GPS.
+    ------------------------------------------------
+    INFORMACIÓN GPS
+    ------------------------------------------------
   */
-
-  latAnterior =
-    nuevaLat;
-
-  lonAnterior =
-    nuevaLon;
-
-  tiempoAnterior =
-    ahora;
-
 
   document.getElementById("gpsdata").innerHTML =
 
@@ -466,8 +595,7 @@ async function recibirPosicion(pos) {
 
 
   /*
-    La navegación permanece igual
-    que en V13.
+    NAVEGACIÓN V13 SIN CAMBIOS
   */
 
   if (navegando) {
