@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>MotoGPS v16.1</title>
+<title>MotoGPS GPS real</title>
 
 <style>
 body {
@@ -69,7 +69,7 @@ button {
 
 <body>
 
-<h1>🏍️ MotoGPS v16.1</h1>
+<h1>🏍️ MotoGPS</h1>
 
 <button id="connect" onclick="conectar()">
 CONECTAR MOTOGPS
@@ -146,15 +146,6 @@ let lonActual = null;
 let velocidadActual = 0;
 let precisionActual = null;
 
-/* V16.1 */
-
-let latAnterior = null;
-let lonAnterior = null;
-let tiempoAnterior = null;
-
-let contadorGPS = 0;
-let fuenteVelocidad = "Sin datos";
-
 
 /* ======================================
    RUTA
@@ -175,35 +166,15 @@ let ultimaVelocidadEnviada = null;
 
 
 /* ======================================
-   DESTINO
-====================================== */
-
-let destinoActual = null;
-
-
-/* ======================================
-   RECÁLCULO
-====================================== */
-
-let contadorFueraRuta = 0;
-let recalculando = false;
-let ultimoRecalculo = 0;
-
-const DISTANCIA_FUERA_RUTA = 40;
-const LECTURAS_FUERA_RUTA = 3;
-const TIEMPO_ENTRE_RECALCULOS = 10000;
-
-
-/* ======================================
    BLUETOOTH
 ====================================== */
 
 async function conectar() {
 
-  document.getElementById("status").innerText =
-    "Buscando MotoGPS...";
-
   try {
+
+    document.getElementById("status").innerText =
+      "Buscando MotoGPS...";
 
     const device =
       await navigator.bluetooth.requestDevice({
@@ -265,9 +236,9 @@ async function enviar(texto) {
 
 function esperar(ms) {
 
-  return new Promise(function(resolve) {
-    setTimeout(resolve, ms);
-  });
+  return new Promise(resolve =>
+    setTimeout(resolve, ms)
+  );
 }
 
 
@@ -285,26 +256,24 @@ function activarGPS() {
     return;
   }
 
+
   document.getElementById("gpsdata").innerText =
     "🛰️ Buscando posición...";
+
 
   if (watchId !== null) {
 
     navigator.geolocation.clearWatch(watchId);
   }
 
-  latAnterior = null;
-  lonAnterior = null;
-  tiempoAnterior = null;
-
-  contadorGPS = 0;
-  velocidadActual = 0;
-  fuenteVelocidad = "Sin datos";
 
   watchId =
     navigator.geolocation.watchPosition(
+
       recibirPosicion,
+
       errorGPS,
+
       {
         enableHighAccuracy: true,
         maximumAge: 0,
@@ -320,135 +289,33 @@ function activarGPS() {
 
 async function recibirPosicion(pos) {
 
-  const nuevaLat =
+  latActual =
     pos.coords.latitude;
 
-  const nuevaLon =
+  lonActual =
     pos.coords.longitude;
-
-  const ahora =
-    Date.now();
 
   precisionActual =
     pos.coords.accuracy;
 
-  contadorGPS++;
-
-
-  /*
-     Primero intentamos usar
-     la velocidad nativa del iPhone.
-  */
-
-  let velocidadNativa = null;
 
   if (
     pos.coords.speed !== null &&
-    Number.isFinite(pos.coords.speed) &&
-    pos.coords.speed > 0
+    Number.isFinite(pos.coords.speed)
   ) {
 
-    velocidadNativa =
-      pos.coords.speed * 3.6;
-  }
-
-
-  /*
-     Si iPhone no da velocidad,
-     la calculamos entre dos
-     posiciones GPS consecutivas.
-  */
-
-  let velocidadPorPosicion = null;
-
-  if (
-    Number.isFinite(latAnterior) &&
-    Number.isFinite(lonAnterior) &&
-    tiempoAnterior !== null
-  ) {
-
-    const distancia =
-      distanciaMetros(
-        latAnterior,
-        lonAnterior,
-        nuevaLat,
-        nuevaLon
+    velocidadActual =
+      Math.max(
+        0,
+        Math.round(
+          pos.coords.speed * 3.6
+        )
       );
-
-    const segundos =
-      (ahora - tiempoAnterior) / 1000;
-
-    if (
-      Number.isFinite(distancia) &&
-      segundos >= 0.5
-    ) {
-
-      velocidadPorPosicion =
-        (distancia / segundos) * 3.6;
-    }
-  }
-
-
-  /*
-     Elegimos velocidad.
-  */
-
-  if (
-    velocidadNativa !== null &&
-    velocidadNativa <= 200
-  ) {
-
-    velocidadActual =
-      Math.round(velocidadNativa);
-
-    fuenteVelocidad =
-      "iPhone";
-
-  } else if (
-    velocidadPorPosicion !== null &&
-    velocidadPorPosicion >= 0 &&
-    velocidadPorPosicion <= 200
-  ) {
-
-    velocidadActual =
-      Math.round(velocidadPorPosicion);
-
-    fuenteVelocidad =
-      "Calculada";
 
   } else {
 
     velocidadActual = 0;
-
-    fuenteVelocidad =
-      "Sin velocidad";
   }
-
-
-  /*
-     Actualizamos posición actual.
-  */
-
-  latActual =
-    nuevaLat;
-
-  lonActual =
-    nuevaLon;
-
-
-  /*
-     Guardamos posición y hora
-     para la siguiente lectura.
-  */
-
-  latAnterior =
-    nuevaLat;
-
-  lonAnterior =
-    nuevaLon;
-
-  tiempoAnterior =
-    ahora;
 
 
   document.getElementById("gpsdata").innerHTML =
@@ -467,25 +334,16 @@ async function recibirPosicion(pos) {
 
     "<br>Velocidad: " +
     velocidadActual +
-    " km/h" +
-
-    "<br>Fuente: " +
-    fuenteVelocidad +
-
-    "<br>Actualizaciones GPS: " +
-    contadorGPS;
+    " km/h";
 
 
   /*
-     Igual que V13:
-     cada nueva posición actualiza
-     la navegación.
+    Si estamos navegando,
+    cada nueva posición GPS
+    actualiza la navegación.
   */
 
-  if (
-    navegando &&
-    !recalculando
-  ) {
+  if (navegando) {
 
     await actualizarNavegacionGPS();
   }
@@ -519,8 +377,10 @@ async function buscarDestino(texto) {
 
     encodeURIComponent(texto);
 
+
   const respuesta =
     await fetch(url);
+
 
   if (!respuesta.ok) {
 
@@ -529,8 +389,10 @@ async function buscarDestino(texto) {
     );
   }
 
+
   const datos =
     await respuesta.json();
+
 
   if (!datos.length) {
 
@@ -538,6 +400,7 @@ async function buscarDestino(texto) {
       "Destino no encontrado"
     );
   }
+
 
   return {
 
@@ -569,11 +432,13 @@ async function calcularRuta() {
     return;
   }
 
+
   const texto =
     document
       .getElementById("destino")
       .value
       .trim();
+
 
   if (!texto) {
 
@@ -584,18 +449,153 @@ async function calcularRuta() {
     return;
   }
 
+
   document.getElementById("routedata").innerText =
     "🔎 Buscando destino...";
 
+
   try {
 
-    destinoActual =
+    const destino =
       await buscarDestino(texto);
+
 
     document.getElementById("routedata").innerText =
       "🌐 Calculando ruta...";
 
-    await generarRuta(false);
+
+    const url =
+
+      "https://router.project-osrm.org/route/v1/driving/" +
+
+      lonActual + "," +
+      latActual + ";" +
+
+      destino.lon + "," +
+      destino.lat +
+
+      "?overview=full" +
+      "&geometries=geojson" +
+      "&steps=true";
+
+
+    const respuesta =
+      await fetch(url);
+
+
+    if (!respuesta.ok) {
+
+      throw new Error(
+        "Error OSRM " +
+        respuesta.status
+      );
+    }
+
+
+    const datos =
+      await respuesta.json();
+
+
+    if (
+      datos.code !== "Ok" ||
+      !datos.routes ||
+      !datos.routes.length
+    ) {
+
+      throw new Error(
+        "No se pudo calcular la ruta"
+      );
+    }
+
+
+    pasosRuta =
+      datos.routes[0]
+        .legs[0]
+        .steps;
+
+
+    const geometria =
+      datos.routes[0]
+        .geometry
+        .coordinates;
+
+
+    puntosRuta =
+      densificarGeometria(
+        geometria,
+        5
+      );
+
+
+    construirIndiceManiobras();
+
+
+    indiceRutaActual = 0;
+
+    indiceManiobra = 0;
+
+
+    if (
+      maniobras.length > 1 &&
+      maniobras[0]
+        .paso
+        .maneuver
+        .type === "depart"
+    ) {
+
+      indiceManiobra = 1;
+    }
+
+
+    ultimaManiobraEnviada = -1;
+    ultimaDistanciaEnviada = null;
+    ultimaVelocidadEnviada = null;
+
+
+    const distanciaKm =
+      datos.routes[0].distance / 1000;
+
+
+    const minutos =
+      datos.routes[0].duration / 60;
+
+
+    document.getElementById("routedata").innerHTML =
+
+      "✅ RUTA CARGADA" +
+
+      "<br>" +
+
+      destino.nombre +
+
+      "<br><br>Distancia: " +
+
+      distanciaKm.toFixed(1) +
+      " km" +
+
+      "<br>Tiempo OSRM: " +
+
+      Math.round(minutos) +
+      " min" +
+
+      "<br>Maniobras: " +
+
+      maniobras.length +
+
+      "<br>Puntos: " +
+
+      puntosRuta.length;
+
+
+    /*
+      Buscamos inmediatamente
+      nuestra posición dentro
+      de la ruta.
+    */
+
+    localizarEnRuta();
+
+    actualizarPantallaWeb();
 
   } catch (error) {
 
@@ -604,139 +604,6 @@ async function calcularRuta() {
       "❌ ERROR<br>" +
       error.message;
   }
-}
-
-
-/* ======================================
-   GENERAR RUTA
-====================================== */
-
-async function generarRuta(esRecalculo) {
-
-  if (!destinoActual) {
-
-    throw new Error(
-      "No hay destino guardado"
-    );
-  }
-
-  const url =
-
-    "https://router.project-osrm.org/route/v1/driving/" +
-
-    lonActual + "," +
-    latActual + ";" +
-
-    destinoActual.lon + "," +
-    destinoActual.lat +
-
-    "?overview=full" +
-    "&geometries=geojson" +
-    "&steps=true";
-
-  const respuesta =
-    await fetch(url);
-
-  if (!respuesta.ok) {
-
-    throw new Error(
-      "Error OSRM " +
-      respuesta.status
-    );
-  }
-
-  const datos =
-    await respuesta.json();
-
-  if (
-    datos.code !== "Ok" ||
-    !datos.routes ||
-    !datos.routes.length
-  ) {
-
-    throw new Error(
-      "No se pudo calcular la ruta"
-    );
-  }
-
-  pasosRuta =
-    datos.routes[0]
-      .legs[0]
-      .steps;
-
-  const geometria =
-    datos.routes[0]
-      .geometry
-      .coordinates;
-
-  puntosRuta =
-    densificarGeometria(
-      geometria,
-      5
-    );
-
-  construirIndiceManiobras();
-
-  indiceRutaActual = 0;
-
-  indiceManiobra = 0;
-
-  if (
-    maniobras.length > 1 &&
-    maniobras[0]
-      .paso
-      .maneuver
-      .type === "depart"
-  ) {
-
-    indiceManiobra = 1;
-  }
-
-  ultimaManiobraEnviada = -1;
-  ultimaDistanciaEnviada = null;
-  ultimaVelocidadEnviada = null;
-
-  contadorFueraRuta = 0;
-
-  const distanciaKm =
-    datos.routes[0].distance / 1000;
-
-  const minutos =
-    datos.routes[0].duration / 60;
-
-  document.getElementById("routedata").innerHTML =
-
-    (
-      esRecalculo
-        ? "🔄 ✅ RUTA RECALCULADA"
-        : "✅ RUTA CARGADA"
-    ) +
-
-    "<br>" +
-
-    destinoActual.nombre +
-
-    "<br><br>Distancia: " +
-
-    distanciaKm.toFixed(1) +
-    " km" +
-
-    "<br>Tiempo OSRM: " +
-
-    Math.round(minutos) +
-    " min" +
-
-    "<br>Maniobras: " +
-
-    maniobras.length +
-
-    "<br>Puntos: " +
-
-    puntosRuta.length;
-
-  localizarEnRuta();
-
-  actualizarPantallaWeb();
 }
 
 
@@ -751,6 +618,7 @@ function densificarGeometria(
 
   const resultado = [];
 
+
   for (
     let i = 0;
     i < geometria.length - 1;
@@ -760,7 +628,9 @@ function densificarGeometria(
     const a = geometria[i];
     const b = geometria[i + 1];
 
+
     resultado.push(a);
+
 
     const d =
       distanciaMetros(
@@ -770,8 +640,10 @@ function densificarGeometria(
         b[0]
       );
 
+
     if (!Number.isFinite(d))
       continue;
+
 
     const partes =
       Math.max(
@@ -781,6 +653,7 @@ function densificarGeometria(
         )
       );
 
+
     for (
       let j = 1;
       j < partes;
@@ -789,6 +662,7 @@ function densificarGeometria(
 
       const t =
         j / partes;
+
 
       resultado.push([
 
@@ -802,6 +676,7 @@ function densificarGeometria(
     }
   }
 
+
   if (geometria.length) {
 
     resultado.push(
@@ -811,12 +686,13 @@ function densificarGeometria(
     );
   }
 
+
   return resultado;
 }
 
 
 /* ======================================
-   ASOCIAR MANIOBRAS A RUTA
+   ASOCIAR MANIOBRAS A LA RUTA
 ====================================== */
 
 function construirIndiceManiobras() {
@@ -824,6 +700,7 @@ function construirIndiceManiobras() {
   maniobras = [];
 
   let indiceBusqueda = 0;
+
 
   for (
     let p = 0;
@@ -834,17 +711,20 @@ function construirIndiceManiobras() {
     const paso =
       pasosRuta[p];
 
+
     const lon =
       paso.maneuver.location[0];
 
     const lat =
       paso.maneuver.location[1];
 
+
     let mejorIndice =
       indiceBusqueda;
 
     let mejorDistancia =
       Infinity;
+
 
     for (
       let i = indiceBusqueda;
@@ -855,6 +735,7 @@ function construirIndiceManiobras() {
       const punto =
         puntosRuta[i];
 
+
       const d =
         distanciaMetros(
           lat,
@@ -862,6 +743,7 @@ function construirIndiceManiobras() {
           punto[1],
           punto[0]
         );
+
 
       if (
         Number.isFinite(d) &&
@@ -872,9 +754,11 @@ function construirIndiceManiobras() {
         mejorIndice = i;
       }
 
+
       if (mejorDistancia < 2)
         break;
     }
+
 
     maniobras.push({
 
@@ -887,6 +771,7 @@ function construirIndiceManiobras() {
         mejorDistancia
     });
 
+
     indiceBusqueda =
       mejorIndice;
   }
@@ -895,7 +780,6 @@ function construirIndiceManiobras() {
 
 /* ======================================
    LOCALIZAR GPS EN LA RUTA
-   LÓGICA V13
 ====================================== */
 
 function localizarEnRuta() {
@@ -909,11 +793,22 @@ function localizarEnRuta() {
     return null;
   }
 
+
+  /*
+    Buscamos alrededor de la posición
+    anterior de la ruta.
+
+    Permitimos mirar bastante hacia
+    delante y algo hacia atrás para
+    absorber saltos del GPS.
+  */
+
   let inicio =
     Math.max(
       0,
       indiceRutaActual - 40
     );
+
 
   let fin =
     Math.min(
@@ -921,17 +816,25 @@ function localizarEnRuta() {
       indiceRutaActual + 300
     );
 
+
+  /*
+    En la primera localización
+    buscamos toda la ruta.
+  */
+
   if (indiceRutaActual === 0) {
 
     inicio = 0;
     fin = puntosRuta.length - 1;
   }
 
+
   let mejorIndice =
     indiceRutaActual;
 
   let mejorDistancia =
     Infinity;
+
 
   for (
     let i = inicio;
@@ -942,6 +845,7 @@ function localizarEnRuta() {
     const punto =
       puntosRuta[i];
 
+
     const d =
       distanciaMetros(
         latActual,
@@ -949,6 +853,7 @@ function localizarEnRuta() {
         punto[1],
         punto[0]
       );
+
 
     if (
       Number.isFinite(d) &&
@@ -959,6 +864,12 @@ function localizarEnRuta() {
       mejorIndice = i;
     }
   }
+
+
+  /*
+    No permitimos retrocesos grandes
+    provocados por ruido del GPS.
+  */
 
   if (
     mejorIndice >=
@@ -971,6 +882,7 @@ function localizarEnRuta() {
         mejorIndice
       );
   }
+
 
   return {
     indice:
@@ -1004,8 +916,7 @@ function actualizarIndiceManiobra() {
 
 
 /* ======================================
-   DISTANCIA POR RUTA
-   LÓGICA V13
+   DISTANCIA POR LA RUTA
 ====================================== */
 
 function distanciaHastaManiobra(
@@ -1023,10 +934,13 @@ function distanciaHastaManiobra(
     return 0;
   }
 
+
   if (hasta <= desde)
     return 0;
 
+
   let total = 0;
+
 
   for (
     let i = desde;
@@ -1040,8 +954,422 @@ function distanciaHastaManiobra(
     const b =
       puntosRuta[i + 1];
 
+
     if (!a || !b)
       continue;
 
+
     const d =
-      distancia
+      distanciaMetros(
+        a[1],
+        a[0],
+        b[1],
+        b[0]
+      );
+
+
+    if (Number.isFinite(d)) {
+
+      total += d;
+    }
+  }
+
+
+  return total;
+}
+
+
+/* ======================================
+   MANIOBRA → ESP32
+====================================== */
+
+function comandoManiobra(paso) {
+
+  const mod =
+    paso.maneuver.modifier || "";
+
+  const tipo =
+    paso.maneuver.type || "";
+
+
+  if (mod.includes("uturn"))
+    return "T:UTURN";
+
+  if (mod.includes("right"))
+    return "T:RIGHT";
+
+  if (mod.includes("left"))
+    return "T:LEFT";
+
+  if (
+    mod.includes("straight") ||
+    tipo === "continue" ||
+    tipo === "depart"
+  ) {
+
+    return "T:STRAIGHT";
+  }
+
+
+  return "T:STRAIGHT";
+}
+
+
+/* ======================================
+   NAVEGACIÓN GPS
+====================================== */
+
+async function actualizarNavegacionGPS() {
+
+  if (
+    !navegando ||
+    !maniobras.length
+  ) {
+
+    return;
+  }
+
+
+  const localizacion =
+    localizarEnRuta();
+
+
+  if (!localizacion)
+    return;
+
+
+  actualizarIndiceManiobra();
+
+
+  const actual =
+    maniobras[
+      indiceManiobra
+    ];
+
+
+  if (!actual)
+    return;
+
+
+  let distancia =
+    distanciaHastaManiobra(
+
+      indiceRutaActual,
+
+      actual.indicePunto
+    );
+
+
+  if (!Number.isFinite(distancia)) {
+
+    distancia = 0;
+  }
+
+
+  const metros =
+    Math.max(
+      0,
+      Math.round(distancia)
+    );
+
+
+  const comando =
+    comandoManiobra(
+      actual.paso
+    );
+
+
+  const calle =
+    actual.paso.name ||
+    "Sin nombre";
+
+
+  /*
+    Flecha y calle solamente
+    cuando cambia la maniobra.
+  */
+
+  if (
+    indiceManiobra !==
+    ultimaManiobraEnviada
+  ) {
+
+    await enviar(comando);
+
+    await esperar(70);
+
+    await enviar(
+      "C:" + calle
+    );
+
+    ultimaManiobraEnviada =
+      indiceManiobra;
+  }
+
+
+  /*
+    Distancia: solo si cambia
+    al menos 5 metros.
+  */
+
+  if (
+    ultimaDistanciaEnviada === null ||
+    Math.abs(
+      metros -
+      ultimaDistanciaEnviada
+    ) >= 5
+  ) {
+
+    await esperar(40);
+
+    await enviar(
+      "D:" +
+      metros +
+      " m"
+    );
+
+    ultimaDistanciaEnviada =
+      metros;
+  }
+
+
+  /*
+    Velocidad.
+  */
+
+  if (
+    ultimaVelocidadEnviada === null ||
+    velocidadActual !==
+      ultimaVelocidadEnviada
+  ) {
+
+    await esperar(40);
+
+    await enviar(
+      "V:" +
+      velocidadActual
+    );
+
+    ultimaVelocidadEnviada =
+      velocidadActual;
+  }
+
+
+  actualizarPantallaWeb(
+    localizacion.distancia
+  );
+}
+
+
+/* ======================================
+   INFORMACIÓN WEB
+====================================== */
+
+function actualizarPantallaWeb(
+  distanciaRuta = null
+) {
+
+  if (!maniobras.length)
+    return;
+
+
+  actualizarIndiceManiobra();
+
+
+  const actual =
+    maniobras[
+      indiceManiobra
+    ];
+
+
+  if (!actual)
+    return;
+
+
+  const distancia =
+    distanciaHastaManiobra(
+      indiceRutaActual,
+      actual.indicePunto
+    );
+
+
+  const metros =
+    Number.isFinite(distancia)
+      ? Math.round(distancia)
+      : 0;
+
+
+  let texto =
+
+    "🧭 <b>MANIOBRA " +
+
+    (indiceManiobra + 1) +
+
+    " / " +
+
+    maniobras.length +
+
+    "</b>" +
+
+    "<br><br>" +
+
+    comandoManiobra(
+      actual.paso
+    ) +
+
+    "<br>" +
+
+    (
+      actual.paso.name ||
+      "Sin nombre"
+    ) +
+
+    "<br><br>📏 <b>" +
+
+    metros +
+
+    " m</b>" +
+
+    "<br>🛣 Punto ruta: " +
+
+    indiceRutaActual +
+
+    " / " +
+
+    puntosRuta.length;
+
+
+  if (
+    Number.isFinite(
+      distanciaRuta
+    )
+  ) {
+
+    texto +=
+
+      "<br>📡 Distancia GPS a ruta: " +
+
+      Math.round(
+        distanciaRuta
+      ) +
+
+      " m";
+  }
+
+
+  document.getElementById(
+    "navdata"
+  ).innerHTML = texto;
+}
+
+
+/* ======================================
+   INICIAR NAVEGACIÓN
+====================================== */
+
+async function iniciarNavegacion() {
+
+  if (!puntosRuta.length) {
+
+    alert(
+      "Primero calcula una ruta."
+    );
+
+    return;
+  }
+
+
+  navegando = true;
+
+  ultimaManiobraEnviada = -1;
+  ultimaDistanciaEnviada = null;
+  ultimaVelocidadEnviada = null;
+
+
+  await actualizarNavegacionGPS();
+}
+
+
+/* ======================================
+   DETENER NAVEGACIÓN
+====================================== */
+
+async function detenerNavegacion() {
+
+  navegando = false;
+
+  await enviar("V:0");
+
+
+  document.getElementById(
+    "navdata"
+  ).innerHTML =
+
+    "⏹ Navegación detenida";
+}
+
+
+/* ======================================
+   HAVERSINE
+====================================== */
+
+function distanciaMetros(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2)
+  ) {
+
+    return Infinity;
+  }
+
+
+  const R = 6371000;
+
+  const rad =
+    Math.PI / 180;
+
+
+  const dLat =
+    (lat2 - lat1) * rad;
+
+  const dLon =
+    (lon2 - lon1) * rad;
+
+
+  const a =
+
+    Math.sin(dLat / 2) *
+    Math.sin(dLat / 2) +
+
+    Math.cos(lat1 * rad) *
+    Math.cos(lat2 * rad) *
+
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
+
+  const c =
+
+    2 *
+
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    );
+
+
+  return R * c;
+}
+
+</script>
+
+</body>
+</html>
